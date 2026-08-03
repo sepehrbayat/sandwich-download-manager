@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "1.0.0",
+  "planId": "ENGPLAN-CYCLE-EVT-20260803-002",
+  "workstreamId": "WS-15",
+  "ownerRole": "ENG-15",
+  "producerActorId": "actor-eng-15",
+  "status": "failed",
+  "verificationDisposition": "failed",
+  "implementationRevision": "pending",
+  "changedComponents": [],
+  "commands": [
+    "Get-Content -Raw C:\\Users\\sepehr\\.agents\\skills\\dan-agent-accuracy\\SKILL.md; Get-Content -Raw .development-os\\runs\\ENGPLAN-CYCLE-EVT-20260803-002-WS-15-input.json",
+    "git status --short; rg --files -g '!node_modules' -g '!.git' | Sort-Object; Get-Content -Raw Cargo.toml; Get-Content -Raw package.json",
+    "Get-ChildItem -Recurse -File apps,packages,src,tests,.github; Get-ChildItem -Recurse -Filter Cargo.toml; git diff --check",
+    "Get-Content -Raw tests\\quality\\verify-windows-delivery.ps1; Get-Content -Raw tests\\quality\\run-regression.ps1; Get-Content -Raw packages\\download-engine\\tests\\runtime.rs; Get-Content -Raw apps\\desktop\\src\\main.rs; Get-Content -Raw src\\main.js; Test-Path LICENSE",
+    "$env:CARGO_TARGET_DIR = Join-Path ([System.IO.Path]::GetTempPath()) 'sandwich-ws15-cargo-target'; node --test tests\\frontend\\*.test.js; cargo fmt --manifest-path packages\\download-engine\\Cargo.toml --all -- --check; cargo test --manifest-path packages\\download-engine\\Cargo.toml --locked; cargo check --manifest-path apps\\desktop\\Cargo.toml --locked; git diff --check",
+    "Get-FileHash implementation files; Select-String -Path apps\\desktop\\src\\main.rs,src\\main.js -Pattern 'confirm_clipboard_offer|control_download|download_with_control|resume_with_control' -Context 1,1; git status --short",
+    "$env:CARGO_TARGET_DIR = Join-Path ([System.IO.Path]::GetTempPath()) 'sandwich-ws15-cargo-target'; cargo build --manifest-path apps\\desktop\\Cargo.toml --locked"
+  ],
+  "evidence": [
+    "Node tests passed: 2 passed, 0 failed, but covered only formatter and canonical-state labels—not real DOM or Windows UI behavior.",
+    "Download-engine behavioral tests passed: 6 passed, covering byte-correct segmented/fallback transfers, persisted pause/resume offsets, cancellation cleanup, restart-state recovery, metrics, and limited filename sanitization.",
+    "cargo check for apps/desktop completed successfully against the shared download-engine crate.",
+    "cargo fmt --check failed because packages/download-engine/tests/runtime.rs is not formatted.",
+    "git diff --check exited successfully, with only line-ending warnings for pre-existing modified files.",
+    "Root LICENSE is missing, violating the explicit GPL-3.0 acceptance requirement.",
+    "Root Cargo.toml is missing, so the repository is not the required root Rust workspace even though separate crate manifests exist.",
+    "src/main.js invokes confirm_clipboard_offer, but apps/desktop/src/main.rs neither implements nor registers that Tauri command; clipboard confirmation therefore cannot work in the real application.",
+    "apps/desktop/src/main.rs control_download only changes an in-memory Snapshot status; it does not signal download_with_control or resume_with_control, so UI pause, resume, and cancel do not control the running transfer.",
+    "No real DOM, browser, Tauri runtime, keyboard, or assistive-technology test was present or reproduced for user-visible behavior.",
+    "The explicit cargo build command used an external temporary target directory to preserve repository content but timed out after approximately 124 seconds, so a completed Windows build was not reproduced.",
+    "Post-verification git status showed the same pre-existing tracked and untracked repository state; this verifier edited no files."
+  ],
+  "knownRisks": [
+    "Core engine tests do not simulate an actual dropped network connection followed by engine restart; restart recovery is tested by loading a constructed manifest.",
+    "Filename tests cover traversal-like input and a reserved device name, but do not demonstrate the full required matrix of absolute paths, all Windows reserved-name forms, malicious Content-Disposition headers, redirects, or destination escape.",
+    "Open-file and reveal-in-folder actions were compiled but not behaviorally exercised on Windows.",
+    "Queue progress, live speed/ETA, lifecycle transitions, clipboard dismissal/privacy, keyboard operation, and screen-reader behavior remain unverified.",
+    "The desktop adapter uses the uncontrolled download function and only publishes a terminal snapshot, which materially undermines pause/resume/cancel and live queue-progress claims."
+  ],
+  "completedAt": "2026-08-03T20:11:58.4537518+03:30"
+}

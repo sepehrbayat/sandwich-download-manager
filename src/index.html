@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="application-name" content="Sandwich Download Manager" />
+    <meta name="description" content="Sandwich Download Manager is a Windows desktop app for reliable segmented downloads." />
+    <meta name="robots" content="noindex, nofollow, noarchive" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Sandwich Download Manager</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='24' font-size='24'%3E%F0%9F%A5%AA%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#downloads">Skip to downloads</a>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Sandwich</p>
+        <h1>Download manager</h1>
+      </div>
+      <p class="connection" id="connection-status" role="status">Connecting to download engine…</p>
+    </header>
+
+    <main>
+      <section class="panel intake" aria-labelledby="new-download-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">New download</p>
+            <h2 id="new-download-title">Add a file from the web</h2>
+          </div>
+        </div>
+        <form id="download-form">
+          <label for="url">Download URL</label>
+          <div class="url-row">
+            <input id="url" name="url" type="url" inputmode="url" autocomplete="url" required
+              placeholder="https://example.com/file.zip" aria-describedby="url-help form-error" />
+            <button class="primary" type="submit">Add download</button>
+          </div>
+          <p class="help" id="url-help">HTTP and HTTPS links are checked by the download engine.</p>
+          <p class="error" id="form-error" role="alert" hidden></p>
+
+          <div class="destination-row">
+            <div>
+              <span class="field-label">Save to</span>
+              <output id="destination" aria-live="polite">Choose a destination folder</output>
+            </div>
+            <button id="choose-folder" class="secondary" type="button">Choose folder</button>
+          </div>
+          <label class="check-row">
+            <input id="organize" type="checkbox" />
+            Organize completed files by type
+          </label>
+        </form>
+      </section>
+
+      <aside id="clipboard-offer" class="clipboard-offer" aria-labelledby="clipboard-title" aria-describedby="clipboard-url" hidden>
+        <div>
+          <p class="eyebrow">Link copied</p>
+          <h2 id="clipboard-title">Download this URL?</h2>
+          <p id="clipboard-url" class="clipboard-url"></p>
+        </div>
+        <div class="button-group">
+          <button id="dismiss-offer" class="quiet" type="button">Dismiss</button>
+          <button id="confirm-offer" class="primary" type="button">Add download</button>
+        </div>
+      </aside>
+
+      <section id="downloads" class="queue" aria-labelledby="downloads-title" tabindex="-1">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Queue</p>
+            <h2 id="downloads-title">Downloads</h2>
+          </div>
+          <button id="refresh" class="quiet" type="button">Refresh</button>
+        </div>
+        <div id="queue-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+        <div id="empty-state" class="empty-state">
+          <p>No downloads yet</p>
+          <span>Add a URL above or copy a link to get started.</span>
+        </div>
+        <ol id="download-list" class="download-list" aria-label="Download queue"></ol>
+      </section>
+    </main>
+
+    <template id="download-template">
+      <li class="download-card">
+        <div class="download-topline">
+          <div class="file-identity">
+            <span class="file-icon" aria-hidden="true">↓</span>
+            <div>
+              <h3 class="filename"></h3>
+              <p class="download-state"></p>
+            </div>
+          </div>
+          <span class="percent"></span>
+        </div>
+        <progress max="100" value="0"></progress>
+        <dl class="metrics" aria-label="Download statistics">
+          <div><dt>Transferred</dt><dd class="size"></dd></div>
+          <div><dt>Speed</dt><dd class="speed"></dd></div>
+          <div><dt>Time remaining</dt><dd class="eta"></dd></div>
+        </dl>
+        <p class="download-error" role="alert" hidden></p>
+        <div class="download-actions"></div>
+      </li>
+    </template>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

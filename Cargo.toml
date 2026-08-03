@@ -1,0 +1,17 @@
+[workspace]
+resolver = "3"
+members = ["apps/desktop", "packages/download-engine"]
+
+# Shared across every crate so the licence and version stay in one place.
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+repository = "https://github.com/sedwna/sandwich-download-manager"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

@@ -1,0 +1,32 @@
+name: Windows CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record toolchain
+        run: |
+          node --version
+          npm --version
+          rustc --version
+          cargo --version
+      - name: Verify locked tests and build Windows application
+        shell: pwsh
+        run: ./tests/quality/verify-windows-delivery.ps1 -Mode Build

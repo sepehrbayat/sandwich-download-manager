@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "1.0.0",
+  "recordId": "DXD-DEVREQ-CYCLE-EVT-20260803-002",
+  "requestId": "DEVREQ-CYCLE-EVT-20260803-002",
+  "planId": "ENGPLAN-CYCLE-EVT-20260803-002",
+  "workstreamId": "WS-12",
+  "status": "implemented-awaiting-independent-verification",
+  "scope": "Windows developer verification and CI delivery controls for Sandwich Download Manager v0.1. No publishing, signing, deployment, or production credentials are included.",
+  "commandContract": {
+    "localCheck": "npm run verify:windows",
+    "localBuild": "npm run build:windows",
+    "implementation": "tests/quality/verify-windows-delivery.ps1",
+    "lockedInputs": [
+      "packages/download-engine/Cargo.lock",
+      "apps/desktop/Cargo.lock"
+    ],
+    "checks": [
+      "frontend Node runtime tests",
+      "shared Rust engine formatting",
+      "shared Rust engine behavioral tests",
+      "Windows Tauri cargo check or debug build"
+    ]
+  },
+  "continuousIntegration": {
+    "workflow": ".github/workflows/windows-ci.yml",
+    "runner": "windows-latest",
+    "events": ["pull_request", "push to main", "manual dispatch"],
+    "permissions": {"contents": "read"},
+    "timeoutMinutes": 30,
+    "concurrencyPolicy": "Cancel an older run for the same Git ref.",
+    "credentialPolicy": "The verification job has no deployment, signing, or production credentials. Pull-request execution is read-only.",
+    "releasePolicy": "CI produces verification evidence only. Public release, signing, or production deployment requires separate attributed human approval."
+  },
+  "businessRuleBoundary": "Transfer, persistence, filename, collision, and lifecycle rules remain in packages/download-engine. The delivery runner and workflow only invoke consumers and do not duplicate application rules.",
+  "traceability": [
+    {"acceptanceCriteria": ["AC-01", "AC-12", "AC-25", "AC-29"], "evidence": ["Windows debug build from the locked desktop manifest", "desktop dependency on packages/download-engine"]},
+    {"acceptanceCriteria": ["AC-02", "AC-03", "AC-13", "AC-14", "AC-26", "AC-30"], "evidence": ["locked behavioral test execution for packages/download-engine"]},
+    {"acceptanceCriteria": ["AC-04", "AC-15", "AC-22", "AC-27"], "evidence": ["frontend runtime formatter/state tests"], "limitation": "Independent Windows UI accessibility and assistive-technology evidence remains owned by ENG-15 or a dedicated runtime QA workstream."},
+    {"acceptanceCriteria": ["AC-28"], "evidence": ["one terminating local/CI command contract and inspectable workflow"], "limitation": "Only ENG-15 may issue the independent engineering disposition."}
+  ],
+  "knownRisks": [
+    "The workflow runner label and checkout major tag are mutable upstream references; hard pinning requires a separately governed dependency-update policy.",
+    "The default CI build is an unsigned debug application build, not an MSI/NSIS packaging or release-signing claim.",
+    "Real Windows WebView runtime, keyboard, and screen-reader verification is outside this delivery-automation boundary and remains independently required."
+  ]
+}

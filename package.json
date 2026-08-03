@@ -1,0 +1,12 @@
+{
+  "name": "sandwich-download-manager-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/frontend/*.test.js",
+    "serve": "node tests/frontend/serve-ui.js",
+    "verify:windows": "powershell -NoProfile -File tests/quality/verify-windows-delivery.ps1 -Mode Check",
+    "build:windows": "powershell -NoProfile -File tests/quality/verify-windows-delivery.ps1 -Mode Build"
+  }
+}
