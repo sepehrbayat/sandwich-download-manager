@@ -19,6 +19,10 @@ let downloads = [];
 let destination = "";
 let clipboardOffer = null;
 const cards = new Map();
+// Disabling a focused button blurs it immediately, so by the time a re-render runs the browser
+// has already moved focus to <body>. Record which download the keyboard user was acting on at
+// click time; the check cannot be made afterwards.
+let pendingFocusId = null;
 
 function showError(message) {
   elements.error.textContent = message;
@@ -32,6 +36,7 @@ function actionButton(label, action, item) {
   button.textContent = label;
   button.setAttribute("aria-label", `${label} ${item.filename}`);
   button.addEventListener("click", async () => {
+    if (document.activeElement === button) pendingFocusId = item.id;
     button.disabled = true;
     try {
       if (action === "open") await bridge.invoke("open_completed_file", { downloadId: item.id });
@@ -97,11 +102,13 @@ function updateCard(entry, item) {
   const actions = actionsFor(item.status);
   const key = actions.map(([, action]) => action).join("|");
   if (key !== entry.actionsKey) {
-    const hadFocus = entry.actions.contains(document.activeElement);
+    const hadFocus =
+      entry.actions.contains(document.activeElement) || pendingFocusId === item.id;
     entry.actions.replaceChildren(...actions.map(([text, action]) => actionButton(text, action, item)));
     entry.actionsKey = key;
     if (hadFocus) entry.actions.querySelector("button")?.focus();
   }
+  if (pendingFocusId === item.id) pendingFocusId = null;
 }
 
 // Reconciles by download id and mutates cards in place. A full rebuild would destroy the
