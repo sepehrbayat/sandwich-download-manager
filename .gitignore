@@ -24,3 +24,7 @@ docs/
 engineering/
 development-os.config.json
 DEVELOPMENT.md
+
+# Playwright output
+test-results/
+playwright-report/

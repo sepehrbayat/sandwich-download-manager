@@ -40,6 +40,23 @@ jobs:
         shell: bash
         run: node --test tests/frontend/*.test.js
 
+      - name: Install UI test runner
+        # Only the Playwright package: the tests drive the Edge that windows-latest already
+        # ships, so no browser download is needed. That is also the engine the app renders in,
+        # since WebView2 is Edge.
+        run: npm ci --no-fund --no-audit
+
+      - name: UI tests
+        run: npx playwright test
+
+      - name: Upload UI test traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
+
       - name: Build installers
         run: npx --yes @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json
 
