@@ -18,3 +18,9 @@ apps/desktop/gen/
 
 # Autopilot governance records: process metadata, not product source
 .development-os/
+
+# Autopilot process artifacts: generic scaffolding, not this project's documentation
+docs/
+engineering/
+development-os.config.json
+DEVELOPMENT.md
