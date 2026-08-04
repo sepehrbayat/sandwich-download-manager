@@ -58,7 +58,18 @@ jobs:
           retention-days: 7
 
       - name: Build installers
-        run: npx --yes @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json
+        # Signing is opt-in: without the secret this builds unsigned, so forks and pull
+        # requests still produce installers instead of failing on a secret they cannot read.
+        run: |
+          $thumbprint = "${{ secrets.SIGNING_CERT_THUMBPRINT }}"
+          if ($thumbprint) {
+            # Tauri does not expand environment variables inside config files, so the
+            # thumbprint is supplied as inline JSON rather than a placeholder.
+            $identity = '{"bundle":{"windows":{"certificateThumbprint":"' + $thumbprint + '"}}}'
+            npx --yes @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json --config apps/desktop/tauri.signing.conf.json --config $identity
+          } else {
+            npx --yes @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json
+          }
 
       - uses: actions/upload-artifact@v4
         with:

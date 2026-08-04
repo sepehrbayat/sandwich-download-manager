@@ -35,7 +35,7 @@ Being straight about this, because these are the reasons you might stay with IDM
 - **No video capture from streaming sites.** A deliberate exclusion, not an oversight.
 - **Windows only.** The core is portable; macOS and Linux come after Windows is solid.
 - **Not code-signed**, so Windows SmartScreen will warn on first run. Choose
-  *More info → Run anyway*. Signing is planned.
+  *More info → Run anyway*. See [SIGNING.md](SIGNING.md) for why, and what would change it.
 
 ## Browser extension
 
