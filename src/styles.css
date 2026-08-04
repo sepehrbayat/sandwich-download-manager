@@ -102,10 +102,6 @@ body {
 
 .brand { display: flex; align-items: center; gap: 10px; }
 .mark { width: 30px; height: 30px; flex: none; }
-.mark-crust { fill: var(--crust); }
-.mark-fill-a { fill: var(--lettuce); }
-.mark-fill-b { fill: var(--tomato); }
-.mark-fill-c { fill: var(--char); }
 
 .brand-text { display: flex; flex-direction: column; line-height: 1.15; }
 .brand-name { font-weight: 700; letter-spacing: -0.01em; }

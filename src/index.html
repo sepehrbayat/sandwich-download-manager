@@ -9,7 +9,7 @@
     <meta name="robots" content="noindex, nofollow, noarchive" />
     <meta name="referrer" content="no-referrer" />
     <title>Sandwich Download Manager</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='24' font-size='24'%3E%F0%9F%A5%AA%3C/text%3E%3C/svg%3E" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cg stroke='%238b5a3c' stroke-width='4.5' stroke-linejoin='round'%3E%3Cpath d='M6 90V80.5a4 4 0 0 1 4-4h80a4 4 0 0 1 4 4V90a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4Z' fill='%23f7b26a'/%3E%3Crect x='6' y='66.5' width='88' height='10' rx='3' fill='%23ffd426'/%3E%3Crect x='6' y='56.5' width='88' height='10' rx='3' fill='%23e8412f'/%3E%3Crect x='6' y='45' width='88' height='11.5' rx='3' fill='%237cb342'/%3E%3Cpath d='M6 45V35C6 24 25.7 15 50 15s44 9 44 20v10Z' fill='%23f7b26a'/%3E%3C/g%3E%3Cpath fill='%23fff' d='M42.5 31.5h15v29h11L50 84 31.5 60.5h11Z'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -18,13 +18,22 @@
     <!-- Title bar: brand, live throughput, primary action -->
     <header class="titlebar">
       <div class="brand">
-        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-          <!-- A sandwich in cross-section: the layers are the download's segments -->
-          <path class="mark-crust" d="M4 9c0-3 5.4-5 12-5s12 2 12 5v1.5H4Z" />
-          <rect class="mark-fill-a" x="4" y="11.5" width="24" height="3.4" rx="1.2" />
-          <rect class="mark-fill-b" x="4" y="16" width="24" height="3.4" rx="1.2" />
-          <rect class="mark-fill-c" x="4" y="20.5" width="24" height="3.4" rx="1.2" />
-          <path class="mark-crust" d="M4 25h24v1c0 2.4-5.4 4-12 4S4 28.4 4 26Z" />
+        <svg class="mark" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+          <!-- The burger mark: a file arriving as stacked layers, which is the same idea the
+               progress bar uses. Drawn inline so it follows the theme rather than a bitmap. -->
+          <g stroke="#8b5a3c" stroke-width="4.5" stroke-linejoin="round">
+            <path d="M6 90V80.5a4 4 0 0 1 4-4h80a4 4 0 0 1 4 4V90a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4Z" fill="#f7b26a"/>
+            <rect x="6" y="66.5" width="88" height="10" rx="3" fill="#ffd426"/>
+            <rect x="6" y="56.5" width="88" height="10" rx="3" fill="#e8412f"/>
+            <rect x="6" y="45" width="88" height="11.5" rx="3" fill="#7cb342"/>
+            <path d="M6 45V35C6 24 25.7 15 50 15s44 9 44 20v10Z" fill="#f7b26a"/>
+          </g>
+          <g fill="#f5e6c8">
+            <ellipse cx="31" cy="28" rx="4.4" ry="2.9" transform="rotate(-16 31 28)"/>
+            <ellipse cx="45" cy="24.5" rx="4.4" ry="2.9" transform="rotate(4 45 24.5)"/>
+            <ellipse cx="59" cy="26.5" rx="4.4" ry="2.9" transform="rotate(-8 59 26.5)"/>
+          </g>
+          <path fill="#ffffff" d="M42.5 31.5h15v29h11L50 84 31.5 60.5h11Z"/>
         </svg>
         <div class="brand-text">
           <span class="brand-name">Sandwich</span>
@@ -150,9 +159,9 @@
 
           <div id="empty-state" class="empty-state">
             <svg class="empty-mark" viewBox="0 0 64 40" aria-hidden="true">
-              <path class="mark-crust" d="M6 14c0-5 11-9 26-9s26 4 26 9v2H6Z" />
-              <rect class="mark-fill-b" x="6" y="18" width="52" height="5" rx="2" />
-              <path class="mark-crust" d="M6 26h52v2c0 4-11 7-26 7S6 32 6 28Z" />
+              <path fill="#f7b26a" stroke="#8b5a3c" stroke-width="2.5" d="M6 16V13C6 8 17 4 32 4s26 4 26 9v3Z" />
+              <rect fill="#7cb342" stroke="#8b5a3c" stroke-width="2.5" x="6" y="18" width="52" height="6" rx="2" />
+              <path fill="#f7b26a" stroke="#8b5a3c" stroke-width="2.5" d="M6 26h52v3c0 4-11 7-26 7S6 33 6 29Z" />
             </svg>
             <p class="empty-title">Nothing on the plate yet</p>
             <span class="empty-hint">Add a URL, or copy a link and Sandwich will offer to fetch it.</span>

@@ -1,6 +1,10 @@
-# Sandwich Download Manager
+<p align="center">
+  <img src="assets/logo.png" alt="Sandwich Download Manager" width="390">
+</p>
 
-A free, open-source download manager for Windows.
+<p align="center">
+  A free, open-source download manager for Windows.
+</p>
 
 Internet Download Manager is the tool most Windows users reach for, and it stops being free
 after a trial. Sandwich is the same idea without the licence: segmented downloads, reliable
@@ -47,7 +51,8 @@ unpacked:
 
    ```
    cd extension
-   .egister-host.ps1 -ChromeExtensionId <the id from step 2>
+   .
+egister-host.ps1 -ChromeExtensionId <the id from step 2>
    ```
 
 Downloads larger than 1 MB are then handed to Sandwich automatically, and any link can be
