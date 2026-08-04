@@ -35,6 +35,9 @@ jobs:
         run: cargo test --workspace
 
       - name: Frontend tests
+        # PowerShell does not expand globs, so the pattern reached node verbatim and it found
+        # nothing. bash matches how this is run locally, which is the point of the check.
+        shell: bash
         run: node --test tests/frontend/*.test.js
 
       - name: Build installers
