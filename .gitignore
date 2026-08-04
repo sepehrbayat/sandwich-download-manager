@@ -10,3 +10,11 @@ coverage/
 .DS_Store
 .product-ops-onboarding.json
 apps/desktop/gen/
+
+# Downloads that land in the working directory during testing
+*.iso
+*.aria2
+*.part
+
+# Autopilot governance records: process metadata, not product source
+.development-os/
