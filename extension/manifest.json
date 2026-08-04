@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Sandwich Download Manager",
+  "version": "0.1.0",
+  "description": "Send downloads from your browser to Sandwich Download Manager.",
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "permissions": [
+    "downloads",
+    "nativeMessaging",
+    "cookies",
+    "storage",
+    "contextMenus",
+    "notifications"
+  ],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Sandwich",
+    "default_popup": "popup.html"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sandwich@sandwich.dev",
+      "strict_min_version": "109.0"
+    }
+  }
+}

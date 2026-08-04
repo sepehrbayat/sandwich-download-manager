@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { width: 260px; margin: 0; padding: 14px; font: 13px "Segoe UI", system-ui, sans-serif; background: #fbf7f1; color: #2a1f17; }
+      @media (prefers-color-scheme: dark) { body { background: #1d1712; color: #f6efe4; } }
+      h1 { margin: 0 0 2px; font-size: 14px; }
+      .sub { margin: 0 0 12px; font-size: 11px; opacity: .7; }
+      label { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+      input[type=number] { width: 70px; padding: 3px 6px; }
+      .status { margin-top: 12px; padding: 8px 10px; border-radius: 4px; background: rgb(0 0 0 / .06); font-size: 12px; }
+      .ok { color: #3f8f4f; } .bad { color: #c4442e; }
+    </style>
+  </head>
+  <body>
+    <h1>Sandwich</h1>
+    <p class="sub">Downloads are handed to the desktop app.</p>
+    <label><input type="checkbox" id="enabled" /> Take over browser downloads</label>
+    <label>Only files larger than <input type="number" id="minimum" min="0" step="1" /> MB</label>
+    <div class="status" id="status">Checking…</div>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -368,6 +368,17 @@ fn main() {
             };
             if let Some(engine) = engine.as_ref() {
                 spawn_progress_poller(handle.clone(), engine.clone());
+                // Publish how to reach the engine so the browser native host can hand
+                // downloads to this running instance. The token inside is what protects the
+                // endpoint, so the file lives in the user's own app data and nowhere else.
+                let (endpoint, secret) = engine.connection();
+                let handoff = data_dir.join("engine.json");
+                let payload = serde_json::json!({ "endpoint": endpoint, "secret": secret });
+                if let Err(error) = std::fs::create_dir_all(&data_dir)
+                    .and_then(|()| std::fs::write(&handoff, payload.to_string()))
+                {
+                    eprintln!("could not publish the engine handoff file: {error}");
+                }
             }
             app.manage(AppState {
                 engine,

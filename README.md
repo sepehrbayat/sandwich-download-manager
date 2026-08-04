@@ -19,18 +19,40 @@ no subscription and no nag screens.
 - **Clipboard capture** — copy a link and Sandwich offers to fetch it
 - **Categories** — downloads grouped by state and file type, with live counts
 - **Keyboard and screen-reader support** throughout
+- **Browser integration** — an extension for Chrome, Edge and Firefox that hands downloads
+  to Sandwich, carrying the page's cookies, referrer and user agent so links behind a login
+  still work
 
 ## What it does not do yet
 
 Being straight about this, because these are the reasons you might stay with IDM:
 
-- **No browser integration.** Clicking a download link in Chrome or Firefox will not hand it
-  to Sandwich yet. This is the most-requested thing and the next major piece of work.
 - **No scheduler or bandwidth limiting.**
 - **No video capture from streaming sites.** A deliberate exclusion, not an oversight.
 - **Windows only.** The core is portable; macOS and Linux come after Windows is solid.
 - **Not code-signed**, so Windows SmartScreen will warn on first run. Choose
   *More info → Run anyway*. Signing is planned.
+
+## Browser extension
+
+The extension lives in `extension/`. It is not in the web stores yet, so it is loaded
+unpacked:
+
+1. Install and run Sandwich.
+2. Chrome or Edge: open `chrome://extensions`, enable **Developer mode**, choose
+   **Load unpacked**, and select the `extension` folder. Copy the extension ID it shows.
+   Firefox: open `about:debugging`, choose **Load Temporary Add-on**, and select
+   `extension/manifest.json`.
+3. Register the bridge so the browser is allowed to talk to Sandwich:
+
+   ```
+   cd extension
+   .egister-host.ps1 -ChromeExtensionId <the id from step 2>
+   ```
+
+Downloads larger than 1 MB are then handed to Sandwich automatically, and any link can be
+sent explicitly with **Download with Sandwich** in the right-click menu. If Sandwich is not
+running, the browser keeps the download rather than losing it.
 
 ## Install
 

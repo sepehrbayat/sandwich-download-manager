@@ -222,6 +222,11 @@ fn free_loopback_port() -> Result<u16, Aria2Error> {
 }
 
 impl Aria2 {
+    /// Where this engine is listening, and the token needed to talk to it.
+    pub fn connection(&self) -> (&str, &str) {
+        (&self.endpoint, &self.secret)
+    }
+
     /// Starts a private aria2c and waits for it to answer.
     ///
     /// `engine` is the binary to run. Callers pass the copy shipped beside the app so an
