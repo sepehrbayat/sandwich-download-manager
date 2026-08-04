@@ -30,8 +30,8 @@ try {
     Invoke-Checked "rustc" @("--version")
     Invoke-Checked "cargo" @("--version")
     Invoke-Checked "npm" @("test")
-    Invoke-Checked "cargo" @("fmt", "--manifest-path", "packages/download-engine/Cargo.toml", "--all", "--", "--check")
-    Invoke-Checked "cargo" @("test", "--manifest-path", "packages/download-engine/Cargo.toml", "--locked")
+    Invoke-Checked "cargo" @("fmt", "--all", "--", "--check")
+    Invoke-Checked "cargo" @("test", "--workspace", "--locked")
 
     if ($Mode -eq "Build") {
         Invoke-Checked "cargo" @("build", "--manifest-path", "apps/desktop/Cargo.toml", "--locked")
