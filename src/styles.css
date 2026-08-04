@@ -1,64 +1,485 @@
-:root { font-family: Inter, "Segoe UI Variable", "Segoe UI", sans-serif; color: #18211d; background: #f4f2ea; font-synthesis: none; }
-* { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; }
-button, input { font: inherit; }
-button { min-height: 42px; border-radius: 10px; border: 1px solid transparent; padding: .65rem 1rem; font-weight: 650; cursor: pointer; }
-button:disabled { cursor: wait; opacity: .55; }
-button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 3px solid #0c7b55; outline-offset: 3px; }
-.skip-link { position: fixed; left: 1rem; top: -5rem; z-index: 10; background: #fff; color: #07553c; padding: .75rem; border-radius: 8px; }
-.skip-link:focus { top: 1rem; }
-.app-header { display: flex; align-items: end; justify-content: space-between; gap: 2rem; padding: 2rem max(1.25rem, calc((100vw - 1060px) / 2)); background: #173f32; color: #fff; }
-h1, h2, h3, p { margin-top: 0; }
-h1 { margin-bottom: 0; font-size: clamp(1.65rem, 3vw, 2.4rem); }
-h2 { margin-bottom: 0; font-size: 1.35rem; }
-.eyebrow { margin-bottom: .3rem; text-transform: uppercase; letter-spacing: .13em; font-size: .72rem; font-weight: 800; color: #a6d6bd; }
-.connection { margin: 0; font-size: .88rem; color: #dcebe3; }
-main { width: min(1060px, calc(100% - 2.5rem)); margin: 2rem auto 4rem; display: grid; gap: 1.25rem; }
-.panel, .queue, .clipboard-offer { background: #fff; border: 1px solid #dedbd0; border-radius: 18px; padding: clamp(1.15rem, 3vw, 1.75rem); box-shadow: 0 10px 30px rgba(28, 40, 34, .05); }
-.section-heading, .download-topline, .destination-row, .clipboard-offer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-label, .field-label { display: block; margin: 1.35rem 0 .45rem; font-size: .88rem; font-weight: 750; }
-.url-row { display: grid; grid-template-columns: 1fr auto; gap: .65rem; }
-input[type="url"] { width: 100%; min-height: 48px; padding: .7rem .85rem; border: 1px solid #aaa99f; border-radius: 10px; color: inherit; background: #fff; }
-.primary { background: #087750; color: #fff; }
-.primary:hover { background: #05623f; }
-.secondary { background: #edf5f0; color: #07553c; border-color: #bfd5c9; }
-.quiet { background: transparent; color: #385148; border-color: #c7d0ca; }
-.danger { color: #9b2e2e; }
-.help, .error { margin: .45rem 0 0; font-size: .84rem; }
-.help { color: #5b665f; }
-.error { color: #a52424; font-weight: 650; }
-.destination-row { margin-top: 1rem; padding: .85rem 0; border-top: 1px solid #ece9df; border-bottom: 1px solid #ece9df; }
-.destination-row .field-label { margin: 0 0 .25rem; }
-#destination { overflow-wrap: anywhere; color: #4f5c55; }
-.check-row { display: flex; align-items: center; gap: .6rem; margin: 1rem 0 0; font-weight: 600; }
-.check-row input { width: 19px; height: 19px; accent-color: #087750; }
-.clipboard-offer { border-left: 6px solid #d18428; background: #fff9ed; }
-.clipboard-offer .eyebrow { color: #85561d; }
-.clipboard-url { margin: .5rem 0 0; max-width: 60ch; color: #4d514e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.button-group, .download-actions { display: flex; gap: .55rem; flex-wrap: wrap; }
-.empty-state { padding: 3rem 1rem; text-align: center; color: #67716b; }
-.empty-state p { color: #263d33; font-weight: 750; margin-bottom: .35rem; }
-.download-list { list-style: none; padding: 0; margin: 1.25rem 0 0; display: grid; gap: .8rem; }
-.download-card { padding: 1.1rem; border: 1px solid #dedbd0; border-radius: 14px; }
-.file-identity { display: flex; align-items: center; gap: .8rem; min-width: 0; }
-.file-icon { display: grid; place-items: center; flex: none; width: 42px; height: 42px; border-radius: 10px; background: #edf5f0; color: #087750; font-size: 1.25rem; font-weight: 800; }
-.filename { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
-.download-state { margin: .2rem 0 0; color: #59655e; font-size: .86rem; }
-.percent { font-variant-numeric: tabular-nums; font-weight: 750; }
-progress { width: 100%; height: 9px; margin: 1rem 0 .6rem; border: 0; accent-color: #087750; }
-.metrics { display: flex; gap: .75rem 1.2rem; flex-wrap: wrap; margin: 0; color: #59655e; font-size: .82rem; font-variant-numeric: tabular-nums; }
-.metrics div { display: flex; gap: .3rem; }
-.metrics dt { font-weight: 700; }
-.metrics dd { margin: 0; }
-.download-actions { margin-top: 1rem; }
-.download-error { margin: .75rem 0 0; color: #a52424; font-size: .86rem; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-[hidden] { display: none !important; }
-@media (max-width: 640px) {
-  .app-header, .section-heading, .destination-row, .clipboard-offer { align-items: stretch; flex-direction: column; }
-  .connection { align-self: flex-start; }
-  .url-row { grid-template-columns: 1fr; }
-  .url-row button, .destination-row button, .clipboard-offer button { width: 100%; }
-  .button-group { display: grid; grid-template-columns: 1fr 1fr; }
+/* Sandwich Download Manager
+ *
+ * The concept: a segmented download really is a stack of layers, so the piece map is drawn as
+ * a sandwich cross-section — crust above and below, filling in between. The palette follows
+ * from the same idea (toasted crust, warm amber, lettuce green for done) rather than the usual
+ * blue chrome, which is what makes it read as Sandwich rather than as every other manager.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --crust: #e8a33d;
+  --crust-deep: #c97b29;
+  --char: #8a4b1f;
+  --lettuce: #3f8f4f;
+  --tomato: #c4442e;
+  --patty: #a9603a;
+
+  --bg: #fbf7f1;
+  --surface: #ffffff;
+  --surface-sunk: #f6efe5;
+  --ink: #2a1f17;
+  --ink-soft: #6d5c4d;
+  --line: #ebdfd0;
+  --shadow: 0 1px 2px rgb(42 31 23 / 0.06), 0 8px 24px rgb(42 31 23 / 0.06);
+
+  --radius: 8px;   /* Win11 card radius */
+  --radius-sm: 4px; /* Win11 control radius */
+  --gap: 16px;
+
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-synthesis: none;
 }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14100c;
+    --surface: #1d1712;
+    --surface-sunk: #241d16;
+    --ink: #f6efe4;
+    --ink-soft: #a99683;
+    --line: #2e251c;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 28px rgb(0 0 0 / 0.35);
+    --crust: #f0ae4a;
+    --lettuce: #63b96f;
+    --tomato: #e0705a;
+    --patty: #c0764a;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; margin: 0; }
+
+body {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow: hidden;
+  min-width: 320px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  z-index: 10;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+}
+.skip-link:focus { left: 12px; top: 12px; }
+
+:where(button, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--crust) 55%, transparent);
+}
+
+/* ── Title bar ─────────────────────────────────────────────────────────── */
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+
+.brand { display: flex; align-items: center; gap: 10px; }
+.mark { width: 30px; height: 30px; flex: none; }
+.mark-crust { fill: var(--crust); }
+.mark-fill-a { fill: var(--lettuce); }
+.mark-fill-b { fill: var(--tomato); }
+.mark-fill-c { fill: var(--char); }
+
+.brand-text { display: flex; flex-direction: column; line-height: 1.15; }
+.brand-name { font-weight: 700; letter-spacing: -0.01em; }
+.brand-sub { font-size: 11px; color: var(--ink-soft); }
+
+.throughput {
+  margin-inline-start: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.throughput-arrow { color: var(--crust-deep); font-weight: 700; }
+.throughput-value { font-weight: 600; }
+
+.titlebar-actions { display: flex; align-items: center; gap: 12px; }
+.connection { margin: 0; font-size: 12px; color: var(--ink-soft); }
+
+/* ── Shell ─────────────────────────────────────────────────────────────── */
+
+.shell {
+  display: grid;
+  grid-template-columns: 216px 1fr;
+  flex: 1;
+  min-height: 0;
+}
+
+.rail {
+  border-inline-end: 1px solid var(--line);
+  padding: 14px 10px;
+  overflow-y: auto;
+  background: var(--surface-sunk);
+}
+
+.rail-heading {
+  margin: 14px 8px 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.rail-heading:first-child { margin-top: 0; }
+
+.rail-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+
+.rail-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.rail-item:hover { background: color-mix(in oklab, var(--crust) 14%, transparent); }
+.rail-item.is-selected {
+  background: color-mix(in oklab, var(--crust) 22%, transparent);
+  font-weight: 600;
+}
+.rail-icon { color: var(--ink-soft); text-align: center; }
+.rail-item.is-selected .rail-icon { color: var(--crust-deep); }
+.rail-count { font-size: 11px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+.content {
+  overflow-y: auto;
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+/* ── Panels ────────────────────────────────────────────────────────────── */
+
+.panel, .queue {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.eyebrow {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--crust-deep);
+}
+h2 { margin: 2px 0 0; font-size: 17px; letter-spacing: -0.01em; }
+.toolbar { display: flex; gap: 8px; }
+
+label, .field-label { font-weight: 600; font-size: 12.5px; }
+.url-row { display: flex; gap: 8px; margin-top: 6px; }
+
+input[type="url"] {
+  flex: 1;
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+  color: var(--ink);
+  font: inherit;
+}
+input[type="url"]:focus { border-color: var(--crust); outline: none; }
+
+.help { margin: 6px 0 0; font-size: 12px; color: var(--ink-soft); }
+.error { margin: 8px 0 0; color: var(--tomato); font-size: 12.5px; font-weight: 600; }
+
+.destination-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: var(--surface-sunk);
+  border-radius: var(--radius-sm);
+}
+#destination { display: block; font-size: 12.5px; color: var(--ink-soft); }
+.check-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-weight: 400; }
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+
+button { font: inherit; cursor: pointer; border-radius: var(--radius-sm); }
+
+.primary {
+  min-height: 32px;
+  padding: 6px 16px;
+  border: 0;
+  background: linear-gradient(180deg, var(--crust), var(--crust-deep));
+  color: #2a1a08;
+  font-weight: 700;
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.3) inset;
+}
+.primary:hover { filter: brightness(1.06); }
+.primary:active { filter: brightness(0.94); transform: translateY(0.5px); }
+
+.secondary {
+  min-height: 32px;
+  padding: 5px 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+}
+.secondary:hover { background: var(--surface-sunk); border-color: var(--crust); }
+.secondary:active { transform: translateY(0.5px); }
+
+.quiet {
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+.quiet:hover { background: var(--surface-sunk); color: var(--ink); }
+.quiet.danger { color: var(--tomato); }
+
+button[disabled] { opacity: 0.5; cursor: default; }
+
+/* ── Clipboard offer ───────────────────────────────────────────────────── */
+
+.clipboard-offer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in oklab, var(--crust) 55%, var(--line));
+  border-radius: var(--radius);
+  background: color-mix(in oklab, var(--crust) 12%, var(--surface));
+}
+.clipboard-url { margin: 4px 0 0; font-size: 12.5px; color: var(--ink-soft); word-break: break-all; }
+.button-group { display: flex; gap: 8px; flex: none; }
+
+/* ── Queue ─────────────────────────────────────────────────────────────── */
+
+.empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 44px 20px;
+  color: var(--ink-soft);
+}
+.empty-mark { width: 74px; opacity: 0.55; }
+.empty-title { margin: 8px 0 0; font-weight: 700; color: var(--ink); }
+.empty-hint { font-size: 12.5px; }
+
+.download-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+
+.download-card {
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  display: grid;
+  gap: 10px;
+  transition: border-color 120ms ease;
+}
+.download-card:hover { border-color: color-mix(in oklab, var(--crust) 45%, var(--line)); }
+.download-card[data-status="failed"] { border-color: color-mix(in oklab, var(--tomato) 45%, var(--line)); }
+.download-card[data-status="completed"] { border-color: color-mix(in oklab, var(--lettuce) 35%, var(--line)); }
+
+.card-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.file-identity { display: flex; gap: 11px; min-width: 0; }
+
+.file-kind {
+  width: 34px; height: 34px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--surface-sunk);
+  color: var(--crust-deep);
+  font-size: 15px;
+  font-weight: 700;
+}
+.identity-text { min-width: 0; }
+.filename {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.download-state { margin: 1px 0 0; font-size: 12px; color: var(--ink-soft); }
+
+.headline-metrics { display: flex; align-items: center; gap: 10px; flex: none; }
+.percent { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* ── The stack: every piece of the file drawn as its own little sandwich ── */
+
+.stack { display: grid; gap: 3px; }
+
+/* The plate the sandwiches sit on */
+.stack-pieces {
+  display: flex;
+  gap: 3px;
+  height: 26px;
+  padding: 3px 4px;
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* One sandwich per piece: top bun, filling, bottom bun — built from gradient bands
+ * rather than child elements, so a 96-piece file is still 96 nodes and not 400. */
+.piece {
+  flex: 1 1 0;
+  min-width: 5px;
+  border-radius: 4px 4px 3px 3px;
+  background:
+    linear-gradient(180deg,
+      color-mix(in oklab, var(--ink) 10%, transparent) 0 34%,
+      color-mix(in oklab, var(--ink) 6%, transparent) 34% 66%,
+      color-mix(in oklab, var(--ink) 10%, transparent) 66% 100%);
+  transition: background 160ms ease;
+}
+
+/* A finished piece is a complete sandwich: toasted bun, lettuce, patty, bun. */
+.piece.is-done {
+  background:
+    linear-gradient(180deg,
+      var(--crust) 0 30%,
+      var(--lettuce) 30% 44%,
+      var(--patty) 44% 72%,
+      var(--crust-deep) 72% 100%);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.18) inset;
+}
+
+/* Partly assembled: some of the pieces behind this cell have landed, not all of them. */
+.piece.is-partial {
+  background:
+    linear-gradient(180deg,
+      var(--crust) 0 30%,
+      color-mix(in oklab, var(--lettuce) 55%, transparent) 30% 44%,
+      color-mix(in oklab, var(--patty) 45%, transparent) 44% 72%,
+      var(--crust-deep) 72% 100%);
+}
+
+/* A piece being fetched right now: the bun is there, the filling is still arriving. */
+.piece.is-active {
+  background:
+    linear-gradient(180deg,
+      var(--crust) 0 30%,
+      color-mix(in oklab, var(--crust) 30%, transparent) 30% 72%,
+      var(--crust-deep) 72% 100%);
+  animation: nibble 1100ms ease-in-out infinite;
+}
+
+@keyframes nibble {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* Unknown total size: nothing to fill, so sweep instead of lying about progress. */
+.download-card.is-indeterminate .stack-pieces { position: relative; }
+.download-card.is-indeterminate .stack-pieces::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--crust) 45%, transparent), transparent);
+  animation: sweep 1600ms linear infinite;
+}
+
+@keyframes sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .piece.is-active { animation: none; }
+  .download-card.is-indeterminate .stack-pieces::after { animation: none; opacity: 0.4; }
+  .download-card, .piece { transition: none; }
+}
+
+.download-card[data-status="paused"] .piece.is-done,
+.download-card[data-status="cancelled"] .piece.is-done { filter: grayscale(0.7) opacity(0.75); }
+
+/* ── Metrics and details ───────────────────────────────────────────────── */
+
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.metric-label { color: var(--ink-soft); }
+.metric { color: var(--ink); font-weight: 600; }
+
+.download-error {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--tomato) 12%, transparent);
+  color: var(--tomato);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.details { padding: 10px 12px; background: var(--surface-sunk); border-radius: var(--radius-sm); }
+.detail-grid { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 18px; }
+.detail-grid dt {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+.detail-grid dd { margin: 2px 0 0; font-size: 12.5px; word-break: break-all; }
+
+.download-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.download-actions:empty { display: none; }

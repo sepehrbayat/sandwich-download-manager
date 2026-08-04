@@ -5,7 +5,7 @@ import { formatBytes, formatEta, progressPercent, statusLabels } from "../../src
 test("formats transfer metrics without misleading invalid values", () => {
   assert.equal(formatBytes(1536), "1.5 KB");
   assert.equal(formatBytes(Number.NaN), "Unknown");
-  assert.equal(formatEta(undefined), "ETA unknown");
+  assert.equal(formatEta(undefined), "Unknown");
   assert.equal(formatEta(61), "About 2 min left");
   assert.equal(progressPercent(150, 100), 100);
   assert.equal(progressPercent(10, 0), 0);

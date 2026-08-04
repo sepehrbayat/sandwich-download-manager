@@ -13,95 +13,197 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <a class="skip-link" href="#downloads">Skip to downloads</a>
-    <header class="app-header">
-      <div>
-        <p class="eyebrow">Sandwich</p>
-        <h1>Download manager</h1>
+    <a class="skip-link" href="#queue">Skip to downloads</a>
+
+    <!-- Title bar: brand, live throughput, primary action -->
+    <header class="titlebar">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <!-- A sandwich in cross-section: the layers are the download's segments -->
+          <path class="mark-crust" d="M4 9c0-3 5.4-5 12-5s12 2 12 5v1.5H4Z" />
+          <rect class="mark-fill-a" x="4" y="11.5" width="24" height="3.4" rx="1.2" />
+          <rect class="mark-fill-b" x="4" y="16" width="24" height="3.4" rx="1.2" />
+          <rect class="mark-fill-c" x="4" y="20.5" width="24" height="3.4" rx="1.2" />
+          <path class="mark-crust" d="M4 25h24v1c0 2.4-5.4 4-12 4S4 28.4 4 26Z" />
+        </svg>
+        <div class="brand-text">
+          <span class="brand-name">Sandwich</span>
+          <span class="brand-sub">Download Manager</span>
+        </div>
       </div>
-      <p class="connection" id="connection-status" role="status">Connecting to download engine…</p>
+
+      <div class="throughput" id="throughput" role="status" aria-live="off">
+        <span class="throughput-arrow" aria-hidden="true">↓</span>
+        <span class="throughput-value" id="throughput-value">0 B/s</span>
+      </div>
+
+      <div class="titlebar-actions">
+        <p class="connection" id="connection-status" role="status">Connecting to the engine…</p>
+        <button class="primary" id="open-add" type="button">
+          <span aria-hidden="true">+</span> Add download
+        </button>
+      </div>
     </header>
 
-    <main>
-      <section class="panel intake" aria-labelledby="new-download-title">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">New download</p>
-            <h2 id="new-download-title">Add a file from the web</h2>
-          </div>
-        </div>
-        <form id="download-form">
-          <label for="url">Download URL</label>
-          <div class="url-row">
-            <input id="url" name="url" type="url" inputmode="url" autocomplete="url" required
-              placeholder="https://example.com/file.zip" aria-describedby="url-help form-error" />
-            <button class="primary" type="submit">Add download</button>
-          </div>
-          <p class="help" id="url-help">HTTP and HTTPS links are checked by the download engine.</p>
-          <p class="error" id="form-error" role="alert" hidden></p>
+    <div class="shell">
+      <!-- Category rail -->
+      <nav class="rail" aria-label="Categories">
+        <p class="rail-heading" id="rail-status-heading">Status</p>
+        <ul class="rail-list" aria-labelledby="rail-status-heading">
+          <li><button type="button" class="rail-item is-selected" data-filter="all" aria-current="true">
+            <span class="rail-icon" aria-hidden="true">▤</span><span class="rail-label">All downloads</span><span class="rail-count" data-count="all">0</span>
+          </button></li>
+          <li><button type="button" class="rail-item" data-filter="active">
+            <span class="rail-icon" aria-hidden="true">↓</span><span class="rail-label">Downloading</span><span class="rail-count" data-count="active">0</span>
+          </button></li>
+          <li><button type="button" class="rail-item" data-filter="paused">
+            <span class="rail-icon" aria-hidden="true">‖</span><span class="rail-label">Paused</span><span class="rail-count" data-count="paused">0</span>
+          </button></li>
+          <li><button type="button" class="rail-item" data-filter="completed">
+            <span class="rail-icon" aria-hidden="true">✓</span><span class="rail-label">Finished</span><span class="rail-count" data-count="completed">0</span>
+          </button></li>
+          <li><button type="button" class="rail-item" data-filter="failed">
+            <span class="rail-icon" aria-hidden="true">!</span><span class="rail-label">Failed</span><span class="rail-count" data-count="failed">0</span>
+          </button></li>
+        </ul>
 
-          <div class="destination-row">
+        <p class="rail-heading" id="rail-type-heading">File type</p>
+        <ul class="rail-list" aria-labelledby="rail-type-heading">
+          <li><button type="button" class="rail-item" data-filter="type:video">
+            <span class="rail-icon" aria-hidden="true">▶</span><span class="rail-label">Video</span><span class="rail-count" data-count="type:video">0</span>
+          </button></li>
+          <li><button type="button" class="rail-item" data-filter="type:audio">
+            <span class="rail-icon" aria-hidden="true">♪</span><span class="rail-label">Music</span><span class="rail-count" data-count="type:audio">0</span>
+          </button></li>
+          <li><button type="button" class="rail-item" data-filter="type:archive">
+            <span class="rail-icon" aria-hidden="true">◫</span><span class="rail-label">Compressed</span><span class="rail-count" data-count="type:archive">0</span>
+          </button></li>
+          <li><button type="button" class="rail-item" data-filter="type:document">
+            <span class="rail-icon" aria-hidden="true">▭</span><span class="rail-label">Documents</span><span class="rail-count" data-count="type:document">0</span>
+          </button></li>
+          <li><button type="button" class="rail-item" data-filter="type:program">
+            <span class="rail-icon" aria-hidden="true">▣</span><span class="rail-label">Programs</span><span class="rail-count" data-count="type:program">0</span>
+          </button></li>
+        </ul>
+      </nav>
+
+      <main class="content">
+        <!-- Add panel, revealed by the title-bar action -->
+        <section class="panel intake" id="intake" aria-labelledby="new-download-title" hidden>
+          <div class="section-heading">
             <div>
-              <span class="field-label">Save to</span>
-              <output id="destination" aria-live="polite">Choose a destination folder</output>
+              <p class="eyebrow">New download</p>
+              <h2 id="new-download-title">Add a file from the web</h2>
             </div>
-            <button id="choose-folder" class="secondary" type="button">Choose folder</button>
+            <button class="quiet" id="close-add" type="button">Close</button>
           </div>
-          <label class="check-row">
-            <input id="organize" type="checkbox" />
-            Organize completed files by type
-          </label>
-        </form>
-      </section>
+          <form id="download-form">
+            <label for="url">Download URL</label>
+            <div class="url-row">
+              <input id="url" name="url" type="url" inputmode="url" autocomplete="url" required
+                placeholder="https://example.com/file.zip" aria-describedby="url-help form-error" />
+              <button class="primary" type="submit">Add download</button>
+            </div>
+            <p class="help" id="url-help">HTTP and HTTPS links are checked before the transfer starts.</p>
+            <p class="error" id="form-error" role="alert" hidden></p>
 
-      <aside id="clipboard-offer" class="clipboard-offer" aria-labelledby="clipboard-title" aria-describedby="clipboard-url" hidden>
-        <div>
-          <p class="eyebrow">Link copied</p>
-          <h2 id="clipboard-title">Download this URL?</h2>
-          <p id="clipboard-url" class="clipboard-url"></p>
-        </div>
-        <div class="button-group">
-          <button id="dismiss-offer" class="quiet" type="button">Dismiss</button>
-          <button id="confirm-offer" class="primary" type="button">Add download</button>
-        </div>
-      </aside>
+            <div class="destination-row">
+              <div>
+                <span class="field-label">Save to</span>
+                <output id="destination" aria-live="polite">Choose a destination folder</output>
+              </div>
+              <button id="choose-folder" class="secondary" type="button">Choose folder</button>
+            </div>
+            <label class="check-row">
+              <input id="organize" type="checkbox" />
+              Organize completed files by type
+            </label>
+          </form>
+        </section>
 
-      <section id="downloads" class="queue" aria-labelledby="downloads-title" tabindex="-1">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Queue</p>
-            <h2 id="downloads-title">Downloads</h2>
+        <aside id="clipboard-offer" class="clipboard-offer" aria-labelledby="clipboard-title" hidden>
+          <div class="offer-body">
+            <p class="eyebrow">Link copied</p>
+            <h2 id="clipboard-title">Download this URL?</h2>
+            <p id="clipboard-url" class="clipboard-url"></p>
           </div>
-          <button id="refresh" class="quiet" type="button">Refresh</button>
-        </div>
-        <div id="queue-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
-        <div id="empty-state" class="empty-state">
-          <p>No downloads yet</p>
-          <span>Add a URL above or copy a link to get started.</span>
-        </div>
-        <ol id="download-list" class="download-list" aria-label="Download queue"></ol>
-      </section>
-    </main>
+          <div class="button-group">
+            <button id="dismiss-offer" class="quiet" type="button">Dismiss</button>
+            <button id="confirm-offer" class="primary" type="button">Add download</button>
+          </div>
+        </aside>
+
+        <section id="queue" class="queue" aria-labelledby="downloads-title" tabindex="-1">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow" id="queue-scope">All downloads</p>
+              <h2 id="downloads-title">Downloads</h2>
+            </div>
+            <div class="toolbar" role="toolbar" aria-label="Queue actions">
+              <button id="resume-all" class="secondary" type="button">Resume all</button>
+              <button id="pause-all" class="secondary" type="button">Pause all</button>
+              <button id="refresh" class="quiet" type="button">Refresh</button>
+            </div>
+          </div>
+
+          <div id="queue-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
+          <div id="empty-state" class="empty-state">
+            <svg class="empty-mark" viewBox="0 0 64 40" aria-hidden="true">
+              <path class="mark-crust" d="M6 14c0-5 11-9 26-9s26 4 26 9v2H6Z" />
+              <rect class="mark-fill-b" x="6" y="18" width="52" height="5" rx="2" />
+              <path class="mark-crust" d="M6 26h52v2c0 4-11 7-26 7S6 32 6 28Z" />
+            </svg>
+            <p class="empty-title">Nothing on the plate yet</p>
+            <span class="empty-hint">Add a URL, or copy a link and Sandwich will offer to fetch it.</span>
+          </div>
+
+          <ol id="download-list" class="download-list" aria-label="Download queue"></ol>
+        </section>
+      </main>
+    </div>
 
     <template id="download-template">
       <li class="download-card">
-        <div class="download-topline">
+        <div class="card-main">
           <div class="file-identity">
-            <span class="file-icon" aria-hidden="true">↓</span>
-            <div>
+            <span class="file-kind" aria-hidden="true"></span>
+            <div class="identity-text">
               <h3 class="filename"></h3>
               <p class="download-state"></p>
             </div>
           </div>
-          <span class="percent"></span>
+          <div class="headline-metrics">
+            <span class="percent"></span>
+            <button class="disclosure quiet" type="button" aria-expanded="false">Details</button>
+          </div>
         </div>
-        <progress max="100" value="0"></progress>
-        <dl class="metrics" aria-label="Download statistics">
-          <div><dt>Transferred</dt><dd class="size"></dd></div>
-          <div><dt>Speed</dt><dd class="speed"></dd></div>
-          <div><dt>Time remaining</dt><dd class="eta"></dd></div>
-        </dl>
+
+        <!-- The stack: each cell is one piece of the file, filling in as it lands -->
+        <div class="stack" role="img">
+          <div class="stack-crust stack-crust-top" aria-hidden="true"></div>
+          <div class="stack-pieces" aria-hidden="true"></div>
+          <div class="stack-crust stack-crust-bottom" aria-hidden="true"></div>
+        </div>
+
+        <div class="metrics">
+          <span class="metric"><span class="metric-label">Transferred</span> <span class="size"></span></span>
+          <span class="metric"><span class="metric-label">Speed</span> <span class="speed"></span></span>
+          <span class="metric"><span class="metric-label">Time left</span> <span class="eta"></span></span>
+          <span class="metric"><span class="metric-label">Connections</span> <span class="conns"></span></span>
+        </div>
+
         <p class="download-error" role="alert" hidden></p>
+
+        <div class="details" hidden>
+          <dl class="detail-grid">
+            <div><dt>Source</dt><dd class="detail-url"></dd></div>
+            <div><dt>Saving to</dt><dd class="detail-dir"></dd></div>
+            <div><dt>Pieces</dt><dd class="detail-pieces"></dd></div>
+            <div><dt>Resume</dt><dd class="detail-resume"></dd></div>
+          </dl>
+        </div>
+
         <div class="download-actions"></div>
       </li>
     </template>

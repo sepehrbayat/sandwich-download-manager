@@ -27,6 +27,12 @@ struct Snapshot {
     bytes_per_second: u64,
     eta_seconds: Option<u64>,
     output: PathBuf,
+    /// Hex piece map driving the segmented progress view.
+    bitfield: String,
+    num_pieces: u32,
+    connections: u32,
+    source_url: String,
+    directory: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<DownloadError>,
 }
@@ -85,6 +91,11 @@ fn to_snapshot(status: &Aria2Status) -> Snapshot {
         bytes_per_second: status.speed(),
         eta_seconds: status.eta_seconds(),
         output,
+        bitfield: status.bitfield.clone(),
+        num_pieces: status.pieces(),
+        connections: status.connection_count(),
+        source_url: status.source_url(),
+        directory: status.dir.clone(),
         error: status
             .error_message
             .as_ref()
@@ -177,6 +188,19 @@ async fn control_download(
     action: String,
 ) -> Result<Snapshot, String> {
     let engine = state.engine()?;
+
+    // Cancelling makes aria2 forget the transfer, so capture what the user sees *first*.
+    // Reporting it back with an empty name would blank the card they just acted on.
+    let before = if action == "cancel" {
+        engine
+            .status(&download_id)
+            .await
+            .ok()
+            .map(|s| to_snapshot(&s))
+    } else {
+        None
+    };
+
     match action.as_str() {
         "pause" => engine.pause(&download_id).await,
         "resume" => engine.resume(&download_id).await,
@@ -186,17 +210,26 @@ async fn control_download(
     .map_err(|error| error.to_string())?;
 
     if action == "cancel" {
-        return Ok(Snapshot {
-            id: download_id,
-            filename: String::new(),
+        let mut snapshot = before.unwrap_or_else(|| Snapshot {
+            id: download_id.clone(),
+            filename: "Download".to_owned(),
             status: DownloadStatus::Cancelled,
             total_bytes: 0,
             completed_bytes: 0,
             bytes_per_second: 0,
             eta_seconds: None,
             output: PathBuf::new(),
+            bitfield: String::new(),
+            num_pieces: 0,
+            connections: 0,
+            source_url: String::new(),
+            directory: String::new(),
             error: None,
         });
+        snapshot.status = DownloadStatus::Cancelled;
+        snapshot.bytes_per_second = 0;
+        snapshot.eta_seconds = None;
+        return Ok(snapshot);
     }
     let status = engine
         .status(&download_id)
@@ -245,13 +278,17 @@ async fn reveal_completed_file(
 /// emitted, so a stalled queue stays silent instead of repeating itself to assistive tech.
 fn spawn_progress_poller(app: AppHandle, engine: Arc<Aria2>) {
     tauri::async_runtime::spawn(async move {
-        let mut previous: std::collections::HashMap<String, (u64, DownloadStatus)> =
+        let mut previous: std::collections::HashMap<String, (u64, DownloadStatus, u32)> =
             std::collections::HashMap::new();
         loop {
             if let Ok(all) = engine.all().await {
                 for status in &all {
                     let snapshot = to_snapshot(status);
-                    let key = (snapshot.completed_bytes, snapshot.status.clone());
+                    let key = (
+                        snapshot.completed_bytes,
+                        snapshot.status.clone(),
+                        snapshot.connections,
+                    );
                     if previous.get(&snapshot.id) != Some(&key) {
                         previous.insert(snapshot.id.clone(), key);
                         let _ = app.emit("download-snapshot", snapshot);

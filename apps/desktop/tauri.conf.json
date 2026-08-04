@@ -3,11 +3,29 @@
   "productName": "Sandwich Download Manager",
   "version": "0.1.0",
   "identifier": "dev.sandwich.download-manager",
-  "build": { "frontendDist": "../../src" },
-  "app": {
-    "windows": [{ "title": "Sandwich Download Manager", "width": 960, "height": 720, "minWidth": 680, "minHeight": 520 }],
-    "security": { "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost" }
+  "build": {
+    "frontendDist": "../../src"
   },
-  "bundle": { "active": true, "targets": ["msi", "nsis"] }
+  "app": {
+    "windows": [
+      {
+        "title": "Sandwich Download Manager",
+        "width": 960,
+        "height": 720,
+        "minWidth": 680,
+        "minHeight": 520
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
+    },
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "msi",
+      "nsis"
+    ]
+  }
 }
-

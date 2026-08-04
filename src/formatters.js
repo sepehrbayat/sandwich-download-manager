@@ -12,7 +12,7 @@ export function formatBytes(value) {
 }
 
 export function formatEta(seconds) {
-  if (!Number.isFinite(seconds) || seconds < 0) return "ETA unknown";
+  if (!Number.isFinite(seconds) || seconds < 0) return "Unknown";
   if (seconds < 60) return `About ${Math.max(1, Math.ceil(seconds))} sec left`;
   if (seconds < 3600) return `About ${Math.ceil(seconds / 60)} min left`;
   return `About ${Math.ceil(seconds / 3600)} hr left`;

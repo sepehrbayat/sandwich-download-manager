@@ -48,12 +48,32 @@ pub struct Aria2Status {
     pub error_message: Option<String>,
     #[serde(default)]
     pub files: Vec<Aria2File>,
+    /// Hex piece map: which chunks of the file are already on disk. This is what makes the
+    /// segmented progress view real rather than decorative.
+    #[serde(default)]
+    pub bitfield: String,
+    #[serde(default)]
+    pub num_pieces: String,
+    #[serde(default)]
+    pub piece_length: String,
+    #[serde(default)]
+    pub connections: String,
+    #[serde(default)]
+    pub dir: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Aria2File {
     #[serde(default)]
     pub path: String,
+    #[serde(default)]
+    pub uris: Vec<Aria2Uri>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Aria2Uri {
+    #[serde(default)]
+    pub uri: String,
 }
 
 impl Aria2Status {
@@ -66,12 +86,100 @@ impl Aria2Status {
     pub fn speed(&self) -> u64 {
         self.download_speed.parse().unwrap_or(0)
     }
+    pub fn pieces(&self) -> u32 {
+        self.num_pieces.parse().unwrap_or(0)
+    }
+    pub fn connection_count(&self) -> u32 {
+        self.connections.parse().unwrap_or(0)
+    }
+    pub fn source_url(&self) -> String {
+        self.files
+            .first()
+            .and_then(|file| file.uris.first())
+            .map(|uri| uri.uri.clone())
+            .unwrap_or_default()
+    }
     pub fn eta_seconds(&self) -> Option<u64> {
         let speed = self.speed();
         (speed > 0 && self.completed() < self.total())
             .then(|| self.total().saturating_sub(self.completed()) / speed)
     }
 }
+
+/// Ties the engine's process tree to this process's lifetime.
+///
+/// `Drop` is not sufficient: Tauri exits without unwinding, and a force-kill or crash never
+/// runs destructors at all. Both leak an aria2 that keeps downloading invisibly. A Job Object
+/// makes the kernel do the cleanup — when this process dies for any reason its handles close,
+/// and `KILL_ON_JOB_CLOSE` terminates every process in the job, grandchildren included. That
+/// matters here because `aria2c` on PATH is often a shim that spawns the real binary.
+#[cfg(windows)]
+mod job {
+    use std::io;
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+        SetInformationJobObject,
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE,
+    };
+
+    pub struct ProcessTree(HANDLE);
+
+    // The handle is only closed in Drop and never dereferenced elsewhere.
+    unsafe impl Send for ProcessTree {}
+    unsafe impl Sync for ProcessTree {}
+
+    impl ProcessTree {
+        pub fn capture(pid: u32) -> io::Result<Self> {
+            unsafe {
+                let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                if job.is_null() {
+                    return Err(io::Error::last_os_error());
+                }
+                let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+                limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                let ok = SetInformationJobObject(
+                    job,
+                    JobObjectExtendedLimitInformation,
+                    &limits as *const _ as *const _,
+                    size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                );
+                if ok == 0 {
+                    let error = io::Error::last_os_error();
+                    CloseHandle(job);
+                    return Err(error);
+                }
+                let process = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, pid);
+                if process.is_null() {
+                    let error = io::Error::last_os_error();
+                    CloseHandle(job);
+                    return Err(error);
+                }
+                let assigned = AssignProcessToJobObject(job, process);
+                CloseHandle(process);
+                if assigned == 0 {
+                    let error = io::Error::last_os_error();
+                    CloseHandle(job);
+                    return Err(error);
+                }
+                Ok(Self(job))
+            }
+        }
+    }
+
+    impl Drop for ProcessTree {
+        fn drop(&mut self) {
+            unsafe { CloseHandle(self.0) };
+        }
+    }
+}
+
+/// Browser-compatible, with Sandwich identified at the end so operators can still see who we
+/// are in their logs.
+const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Sandwich/0.1";
 
 pub struct Aria2 {
     endpoint: String,
@@ -80,6 +188,9 @@ pub struct Aria2 {
     // Behind a mutex so `Aria2` stays Sync and can be shared by the commands and the
     // progress poller without serialising every RPC call.
     child: std::sync::Mutex<Option<Child>>,
+    // Held for the process lifetime; closing it is what kills the engine tree.
+    #[cfg(windows)]
+    _tree: Option<job::ProcessTree>,
 }
 
 /// 128 bits from the OS-seeded hasher std already uses to defend HashMap against collisions.
@@ -127,6 +238,14 @@ impl Aria2 {
             .arg("--max-connection-per-server=8")
             .arg("--min-split-size=1M")
             // Resilience on poor networks.
+            // Many origins reject unfamiliar agents outright: the same URL that works in a
+            // browser returns 403 to aria2's default string. Presenting a browser-compatible
+            // agent is what every download manager does, and without it a sizeable share of
+            // real links simply fail.
+            .arg(format!("--user-agent={USER_AGENT}"))
+            .arg("--http-accept-gzip=true")
+            // Keep the origin's timestamp on the finished file rather than "now".
+            .arg("--remote-time=true")
             .arg("--max-tries=5")
             .arg("--retry-wait=3")
             .arg("--connect-timeout=15")
@@ -155,6 +274,16 @@ impl Aria2 {
             ))
         })?;
 
+        // Capture the engine's whole tree before it can spawn anything we would lose track of.
+        #[cfg(windows)]
+        let tree = match job::ProcessTree::capture(child.id()) {
+            Ok(tree) => Some(tree),
+            Err(error) => {
+                eprintln!("could not contain the engine process tree: {error}");
+                None
+            }
+        };
+
         let engine = Self {
             endpoint: format!("http://127.0.0.1:{port}/jsonrpc"),
             secret,
@@ -162,6 +291,8 @@ impl Aria2 {
                 .timeout(Duration::from_secs(20))
                 .build()
                 .map_err(|error| Aria2Error::Spawn(error.to_string()))?,
+            #[cfg(windows)]
+            _tree: tree,
             child: std::sync::Mutex::new(Some(child)),
         };
 
