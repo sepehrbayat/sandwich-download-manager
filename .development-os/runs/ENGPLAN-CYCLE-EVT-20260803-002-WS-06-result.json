@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "1.0.0",
+  "planId": "ENGPLAN-CYCLE-EVT-20260803-002",
+  "workstreamId": "WS-06",
+  "ownerRole": "ENG-06",
+  "producerActorId": "actor-eng-06",
+  "status": "completed",
+  "verificationDisposition": "not_applicable",
+  "implementationRevision": "pending",
+  "changedComponents": [
+    "packages/download-engine/src/lib.rs",
+    "packages/download-engine/tests/runtime.rs",
+    "docs/database-storage/DEVREQ-CYCLE-EVT-20260803-002-database-storage-plan.json"
+  ],
+  "commands": [
+    "cargo fmt --manifest-path packages\\download-engine\\Cargo.toml",
+    "cargo fmt --manifest-path packages\\download-engine\\Cargo.toml -- --check",
+    "cargo test --manifest-path packages\\download-engine\\Cargo.toml --test runtime",
+    "git diff --check",
+    "Get-FileHash -Algorithm SHA256 packages\\download-engine\\src\\lib.rs,packages\\download-engine\\tests\\runtime.rs,docs\\database-storage\\DEVREQ-CYCLE-EVT-20260803-002-database-storage-plan.json",
+    "cargo clippy --manifest-path packages\\download-engine\\Cargo.toml --all-targets -- -D warnings",
+    "Parsed and validated docs\\database-storage\\DEVREQ-CYCLE-EVT-20260803-002-database-storage-plan.json with PowerShell ConvertFrom-Json and asserted request, workstream, invariant, and traceability fields"
+  ],
+  "evidence": [
+    "Implemented shared-engine manifest validation for schema version, credential-free HTTP(S) URLs, contiguous segment ranges, bounded completed offsets, total-byte coverage, and completed-state integrity.",
+    "Implemented validated metadata backup and restore plus rollback-aware replacement of live manifests.",
+    "Runtime test manifest_backup_restore_and_validation_are_runtime_safe corrupted live metadata, verified load rejection, restored a validated backup, preserved paused segment progress, and rejected an unknown schema version.",
+    "Runtime integration suite passed 3 tests, including segmented and Range-fallback byte correctness, restart recovery, filename containment, and backup/restore behavior.",
+    "cargo fmt check, cargo clippy with warnings denied, and git diff --check completed successfully.",
+    "Inspectable storage artifact documents the v1 data model, migration and rollback policy, backup and restore procedure, index decision, capacity plan, implementation notes, risks, and DEVREQ traceability.",
+    "SHA-256 packages/download-engine/src/lib.rs: 0C3368C588F1EC33E5342D6735D973DBE66EACE576DF37074450586A18B9447C.",
+    "SHA-256 packages/download-engine/tests/runtime.rs: EBA030931E30663EDEE0F8017253F7FB031918857640C4AFD8654C64D5D9D71C.",
+    "SHA-256 docs/database-storage/DEVREQ-CYCLE-EVT-20260803-002-database-storage-plan.json: 87211B09D52B9A645C0907671BED155DEF8CF0E8CF9F483B25792D4C64C2B2A4."
+  ],
+  "knownRisks": [
+    "Metadata and destination content cannot participate in one filesystem transaction; startup reconciliation remains necessary after power loss during finalization.",
+    "Filesystem durability and rename behavior still require Windows fault-injection coverage.",
+    "Manifest URLs, output paths, and backups are sensitive local metadata and inherit user-profile access-control requirements.",
+    "Independent verification remains pending and reserved for ENG-15."
+  ],
+  "completedAt": "2026-08-03T19:15:15.6472041+03:30"
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Sandwich Download Manager",
+  "version": "0.1.0",
+  "identifier": "dev.sandwich.download-manager",
+  "build": {
+    "frontendDist": "../../src"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Sandwich Download Manager",
+        "width": 960,
+        "height": 720,
+        "minWidth": 680,
+        "minHeight": 520
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
+    },
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "msi",
+      "nsis"
+    ],
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "publisher": "Sandwich",
+    "copyright": "GPL-3.0-only",
+    "category": "Utility",
+    "shortDescription": "Free, open-source download manager",
+    "longDescription": "Sandwich is a free and open-source download manager for Windows. It splits each transfer into segments for speed, resumes reliably after interruptions, and keeps a clean, readable queue.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "English"
+        ]
+      },
+      "webviewInstallMode": {
+        "type": "embedBootstrapper",
+        "silent": true
+      }
+    },
+    "resources": [
+      "binaries/aria2c.exe",
+      "binaries/aria2-COPYING.txt",
+      "binaries/aria2-LICENSE.OpenSSL.txt"
+    ]
+  }
+}

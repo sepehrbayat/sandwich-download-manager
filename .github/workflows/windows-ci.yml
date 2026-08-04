@@ -1,0 +1,49 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # The engine lifecycle tests drive a real aria2c; without it they skip rather than fail,
+      # so install it to keep that coverage meaningful in CI.
+      - name: Install aria2
+        run: choco install aria2 --no-progress -y
+
+      - name: Formatting
+        run: cargo fmt --all --check
+
+      - name: Tests
+        run: cargo test --workspace
+
+      - name: Frontend tests
+        run: node --test tests/frontend/*.test.js
+
+      - name: Build installers
+        run: npx --yes @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sandwich-installers
+          path: |
+            target/release/bundle/msi/*.msi
+            target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error

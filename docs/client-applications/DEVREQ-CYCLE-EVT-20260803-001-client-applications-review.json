@@ -1,0 +1,282 @@
+{
+  "schemaVersion": "1.0.0",
+  "recordId": "CLIENT-DEVREQ-CYCLE-EVT-20260803-001",
+  "requestId": "DEVREQ-CYCLE-EVT-20260803-001",
+  "planId": "ENGPLAN-CYCLE-EVT-20260803-001",
+  "workstreamId": "WS-05",
+  "status": "review-completed-implementation-blocked",
+  "recordedAt": "2026-08-03",
+  "scope": "Desktop client application implementation review for Windows, macOS, and Linux. No first platform, supported versions, UI technology, or bounded MVP has human approval, and no executable shared domain service exists; this record therefore defines client adapter boundaries and implementation gates without claiming implemented behavior.",
+  "dependencyEvidence": {
+    "architectureRecord": "docs/architecture/DEVREQ-CYCLE-EVT-20260803-001-solution-architecture.json",
+    "architectureStatus": "proposed-blocked-pending-human-decisions",
+    "frontendAccessibilityRecord": "docs/frontend-accessibility/DEVREQ-CYCLE-EVT-20260803-001-frontend-accessibility-review.json",
+    "backendIntegrationRecord": "docs/backend-api-integration/DEVREQ-CYCLE-EVT-20260803-001-backend-api-integration-review.json",
+    "sharedBusinessRuleBoundary": "Every desktop client consumes one UI-independent download domain service. Clients render durable state and request typed commands; they do not redefine pause, resume, retry, cancellation, destination-conflict, completion, or restart-recovery rules."
+  },
+  "clientContract": {
+    "domainOperations": [
+      "addDownload",
+      "listDownloads",
+      "getDownload",
+      "pauseDownload",
+      "resumeDownload",
+      "cancelDownload",
+      "retryDownload",
+      "locateCompletedDownload"
+    ],
+    "renderedStates": [
+      "queued",
+      "active",
+      "paused",
+      "cancelled",
+      "failed",
+      "interrupted",
+      "completed"
+    ],
+    "clientResponsibilities": [
+      "Collect URL and destination input through platform-appropriate controls.",
+      "Render durable state, progress, user-safe errors, and domain-provided available actions.",
+      "Submit commands with the last observed state version and reconcile typed conflict results.",
+      "Expose keyboard-operable, named controls and meaningful status through the platform accessibility tree.",
+      "Invoke trusted filesystem selection and file-reveal adapters without exposing unrestricted paths to untrusted input.",
+      "Restore focus and client selection after dialogs, item removal, command conflicts, and restart recovery."
+    ],
+    "prohibitedClientRules": [
+      "Direct mutation of download state",
+      "Inferring resumability from state alone",
+      "Choosing whether cancellation retains partial data",
+      "Choosing overwrite, rename, or cancel conflict policy",
+      "Marking a download completed before domain finalization",
+      "Persisting credentials, signed URL query values, or authorization headers",
+      "Automatically opening or executing downloaded content"
+    ]
+  },
+  "platformCapabilityMatrix": [
+    {
+      "platform": "Windows",
+      "supportStatus": "unapproved",
+      "supportedVersions": "undecided",
+      "nativeIntegration": [
+        "Use the approved Windows file picker and file reveal mechanism.",
+        "Validate long paths, locked files, alternate filesystems, atomic rename behavior, and antivirus interaction.",
+        "Verify keyboard navigation, visible focus, high contrast, text scaling, and approved Windows screen readers."
+      ],
+      "distributionDecisions": [
+        "installer format",
+        "code-signing identity and ownership",
+        "reputation handling",
+        "update channel and rollback"
+      ],
+      "requiredOwner": "Windows platform owner"
+    },
+    {
+      "platform": "macOS",
+      "supportStatus": "unapproved",
+      "supportedVersions": "undecided",
+      "nativeIntegration": [
+        "Use the approved macOS destination picker and preserve user-granted access according to the chosen sandbox model.",
+        "Validate quarantine metadata, case sensitivity, removable destinations, atomic rename behavior, and permission loss.",
+        "Verify keyboard operation, Full Keyboard Access, VoiceOver, text scaling, and reduced motion."
+      ],
+      "distributionDecisions": [
+        "sandbox and entitlement model",
+        "distribution channel",
+        "Developer ID and signing ownership",
+        "hardened runtime and notarization",
+        "update channel and rollback"
+      ],
+      "requiredOwner": "macOS platform owner"
+    },
+    {
+      "platform": "Linux",
+      "supportStatus": "unapproved",
+      "supportedVersions": "undecided distributions and desktop environments",
+      "nativeIntegration": [
+        "Use an approved desktop portal or native picker compatible with the supported packaging model.",
+        "Validate permissions, removable volumes, case sensitivity, supported filesystems, atomic rename behavior, and portal denial.",
+        "Verify keyboard operation, focus, scaling, reduced motion, and AT-SPI behavior on every supported desktop environment."
+      ],
+      "distributionDecisions": [
+        "supported distributions and desktop environments",
+        "package formats and repository ownership",
+        "package signing keys and ownership",
+        "desktop portal requirements",
+        "update channel and rollback"
+      ],
+      "requiredOwner": "Linux platform owner"
+    }
+  ],
+  "clientRuntimeScenarios": [
+    {
+      "id": "CLIENT-01",
+      "scenario": "A keyboard-only user adds a valid URL and destination, observes queued and active states, pauses, resumes, completes, and reveals the finalized file.",
+      "requiredEvidence": [
+        "real packaged or development desktop runtime",
+        "native accessibility-tree and focus trace",
+        "shared-domain command and state trace",
+        "filesystem integration result"
+      ]
+    },
+    {
+      "id": "CLIENT-02",
+      "scenario": "The client handles a stale state version by presenting the current durable state and available actions without overwriting the newer transition.",
+      "requiredEvidence": [
+        "desktop integration test",
+        "typed conflict result",
+        "rendered-state inspection"
+      ]
+    },
+    {
+      "id": "CLIENT-03",
+      "scenario": "After process termination and restart, queued, paused, failed, interrupted, and completed items are restored; no partial file is represented as completed.",
+      "requiredEvidence": [
+        "real process restart",
+        "durable domain state trace",
+        "native accessibility-tree inspection",
+        "partial and finalized file inspection"
+      ]
+    },
+    {
+      "id": "CLIENT-04",
+      "scenario": "Network loss and invalid resume support produce an accessible interrupted or restart-required outcome, and retry does not silently append incompatible content.",
+      "requiredEvidence": [
+        "controlled HTTP server",
+        "domain integrity result",
+        "accessible recovery action",
+        "final content integrity check"
+      ]
+    },
+    {
+      "id": "CLIENT-05",
+      "scenario": "Every approved destination-conflict and cancellation choice states its partial-file consequence, remains keyboard operable, and returns focus to a stable location.",
+      "requiredEvidence": [
+        "approved policy fixture",
+        "platform filesystem integration",
+        "keyboard and focus trace",
+        "screen-reader output"
+      ]
+    },
+    {
+      "id": "CLIENT-06",
+      "scenario": "Representative concurrent transfers remain within approved UI-latency, CPU, memory, disk, and network budgets while core controls stay responsive.",
+      "requiredEvidence": [
+        "platform runtime measurements",
+        "approved performance budgets",
+        "interaction latency trace",
+        "resource telemetry containing no sensitive URL or credential data"
+      ]
+    }
+  ],
+  "capabilityDisposition": [
+    {
+      "capability": "URL intake, destination handling, progress, pause, resume, cancel, retry, completion, file location, and restart recovery",
+      "status": "candidate-MVP-pending-human-approval"
+    },
+    {
+      "capability": "Browser capture",
+      "status": "deferred-pending-explicit-approval-and-trust-boundary"
+    },
+    {
+      "capability": "Authenticated downloads, segmented transfers, scheduling, and bandwidth controls",
+      "status": "undecided-not-authorized-for-client-implementation"
+    },
+    {
+      "capability": "Telemetry",
+      "status": "not-justified-for-baseline; absent by default unless separately approved with a privacy specification"
+    },
+    {
+      "capability": "Automatic updates",
+      "status": "blocked-pending-governance-signing-ownership-and-rollback-decisions"
+    },
+    {
+      "capability": "Mobile clients",
+      "status": "deferred; current request and architecture define desktop applications only"
+    }
+  ],
+  "traceability": [
+    {
+      "criteria": [
+        "AC-02",
+        "AC-16",
+        "AC-23",
+        "AC-27"
+      ],
+      "evidence": [
+        "clientContract",
+        "clientRuntimeScenarios"
+      ]
+    },
+    {
+      "criteria": [
+        "AC-03",
+        "AC-15",
+        "AC-17",
+        "AC-28"
+      ],
+      "evidence": [
+        "dependencyEvidence",
+        "platformCapabilityMatrix"
+      ],
+      "limitation": "The matrix defines obligations, not an approved platform or implemented client."
+    },
+    {
+      "criteria": [
+        "AC-05"
+      ],
+      "evidence": [
+        "clientContract.clientResponsibilities",
+        "platformCapabilityMatrix",
+        "clientRuntimeScenarios"
+      ]
+    },
+    {
+      "criteria": [
+        "AC-18"
+      ],
+      "evidence": [
+        "capabilityDisposition"
+      ]
+    },
+    {
+      "criteria": [
+        "AC-19",
+        "AC-30"
+      ],
+      "evidence": [
+        "status",
+        "implementationGate"
+      ],
+      "limitation": "Independent disposition is reserved for ENG-15."
+    }
+  ],
+  "implementationGate": {
+    "blockedBy": [
+      "A dated human product-owner decision approving the primary segment, first platform, supported OS versions, differentiation, bounded MVP, exclusions, and meaning of all devices",
+      "An approved desktop foundation and UI technology with accountable platform ownership",
+      "An executable shared download domain service and typed client-facing operations",
+      "Approved cancellation, destination-conflict, integrity, persistence, compatibility, and performance policies",
+      "Approved packaging, signing, update, rollback, license, governance, vulnerability-reporting, and release-ownership decisions"
+    ],
+    "exitEvidence": [
+      "Client implementation consuming the shared domain service without duplicated business rules",
+      "Automated client adapter tests and shared-domain integration tests",
+      "Real desktop runtime keyboard, accessibility-tree, restart, filesystem, and controlled-network evidence",
+      "Platform packaging and security evidence for each approved platform",
+      "Independent ENG-15 disposition"
+    ]
+  },
+  "implementationNotes": [
+    "WS-05 created no speculative application scaffold because the first platform, UI stack, supported versions, MVP policy, and shared service dependency are unresolved.",
+    "No database, infrastructure, production, credential, deployment, or Git-history operation was performed.",
+    "Source-pattern assertions cannot satisfy the client runtime scenarios; each user-visible claim requires a real DOM, native accessibility tree, desktop integration, or equivalent runtime test."
+  ],
+  "knownRisks": [
+    "Choosing a UI framework before native expectations and the first platform are approved could create avoidable rework or inaccessible platform behavior.",
+    "Separate client implementations can drift unless all commands, transitions, and policies remain in the shared domain service.",
+    "Platform filesystem, accessibility, packaging, signing, and update behavior cannot be inferred from another operating system.",
+    "Resume and restart presentation can mislead users or conceal corruption unless it is driven by validated domain and integrity results.",
+    "No executable client exists, so runtime accessibility, integration, performance, recovery, and security outcomes remain unverified.",
+    "Independent verification remains outstanding and may only be issued by ENG-15."
+  ]
+}

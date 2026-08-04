@@ -1,4 +1,6 @@
 node_modules/
+target/
+.playwright-cli/
 .env
 .env.*
 !.env.example
@@ -7,3 +9,4 @@ build/
 coverage/
 .DS_Store
 .product-ops-onboarding.json
+apps/desktop/gen/

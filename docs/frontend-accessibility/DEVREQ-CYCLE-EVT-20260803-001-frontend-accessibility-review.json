@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "1.0.0",
+  "recordId": "FEA11Y-DEVREQ-CYCLE-EVT-20260803-001",
+  "requestId": "DEVREQ-CYCLE-EVT-20260803-001",
+  "planId": "ENGPLAN-CYCLE-EVT-20260803-001",
+  "workstreamId": "WS-03",
+  "status": "review-completed-implementation-blocked",
+  "recordedAt": "2026-08-03",
+  "scope": "Frontend and accessibility review only. No UI framework or first platform is approved, so this record defines adapter-neutral interaction and verification contracts without claiming implemented behavior.",
+  "dependencyEvidence": {
+    "architectureRecord": "docs/architecture/DEVREQ-CYCLE-EVT-20260803-001-solution-architecture.json",
+    "architectureStatus": "proposed-blocked-pending-human-decisions",
+    "sharedBoundary": "The desktop UI consumes the shared download domain and may present or request transitions, but must not redefine download state, retry, resume, cancellation, destination-conflict, or recovery rules."
+  },
+  "interactionContract": {
+    "states": ["queued", "active", "paused", "cancelled", "failed", "interrupted", "completed"],
+    "primaryActions": [
+      {"action": "add", "accessibleOutcome": "Focus moves to the created download or an actionable validation error; the chosen destination is exposed by name."},
+      {"action": "pause", "availableWhen": ["active"], "accessibleOutcome": "The item exposes paused status and a resume action."},
+      {"action": "resume", "availableWhen": ["paused", "interrupted"], "accessibleOutcome": "The item exposes active status, or a clear explanation and restart choice when safe resume is unavailable."},
+      {"action": "cancel", "availableWhen": ["queued", "active", "paused"], "accessibleOutcome": "A confirmation states the approved partial-file consequence; focus returns to a stable location."},
+      {"action": "retry", "availableWhen": ["failed", "interrupted"], "accessibleOutcome": "The item exposes queued or active status without losing the preceding failure explanation."},
+      {"action": "locate", "availableWhen": ["completed"], "accessibleOutcome": "The platform file reveal action has an accessible name containing the file name."}
+    ],
+    "destinationConflict": "Present overwrite, rename, and cancel only if approved by product policy. Name the existing destination, explain consequences, and do not rely on color alone.",
+    "restartRecovery": "Recovered items retain their durable domain state. Interrupted items expose whether resume or explicit restart is available; partial files are never announced as completed."
+  },
+  "accessibilityRequirements": [
+    {"id": "A11Y-01", "requirement": "Every core action is reachable and operable by keyboard with a logical focus order and no keyboard trap.", "verification": "Runtime keyboard traversal and activation on each approved platform."},
+    {"id": "A11Y-02", "requirement": "Focus is visibly distinguishable in default, high-contrast, and forced-color modes and is restored after dialogs or item removal.", "verification": "Runtime visual inspection plus platform contrast tooling."},
+    {"id": "A11Y-03", "requirement": "Controls expose stable accessible names, roles, values, disabled state, and state-specific actions; icon-only controls have text alternatives.", "verification": "Accessibility-tree inspection and platform screen-reader scenarios."},
+    {"id": "A11Y-04", "requirement": "Progress exposes determinate value when total size is known and an indeterminate/busy state otherwise; status changes are announced without repeating every progress tick.", "verification": "Accessibility-tree and screen-reader testing during a controlled transfer."},
+    {"id": "A11Y-05", "requirement": "Errors identify the affected download, explain the recoverable next step, and remain available for review after announcement.", "verification": "Runtime failure scenarios for network loss, insufficient storage, invalid URL, and unsupported resume."},
+    {"id": "A11Y-06", "requirement": "Text and essential graphics meet WCAG 2.2 AA contrast expectations, support text scaling, and do not clip at the platform's approved scaling range.", "verification": "Automated contrast checks plus runtime inspection at approved scale settings."},
+    {"id": "A11Y-07", "requirement": "Motion is nonessential, avoids progress-animation dependence, and respects the platform reduced-motion preference.", "verification": "Runtime comparison with reduced motion disabled and enabled."},
+    {"id": "A11Y-08", "requirement": "Status, selection, failure, and completion are conveyed with text or semantics in addition to color, shape, or animation.", "verification": "Runtime visual and accessibility-tree inspection."}
+  ],
+  "runtimeAcceptanceScenarios": [
+    {"id": "UI-01", "scenario": "Keyboard-only user adds a valid URL and destination, observes queued then active progress, pauses, resumes, completes, and locates the file.", "requiredEvidence": ["real application DOM or native accessibility tree", "focus trace", "screen-reader output", "domain state trace"]},
+    {"id": "UI-02", "scenario": "Keyboard-only user cancels a queued, active, and paused item and receives the approved partial-file consequence before confirming.", "requiredEvidence": ["real application DOM or native accessibility tree", "focus restoration", "domain state trace"]},
+    {"id": "UI-03", "scenario": "Network loss interrupts an active download; the user retries or is offered explicit restart when safe resume is unavailable.", "requiredEvidence": ["controlled integration server", "accessible error and recovery action", "integrity result"]},
+    {"id": "UI-04", "scenario": "Application restart restores queued, paused, completed, failed, and interrupted items without announcing partial files as complete.", "requiredEvidence": ["desktop runtime restart", "persisted domain state trace", "accessibility-tree inspection"]},
+    {"id": "UI-05", "scenario": "A destination conflict is resolved through each approved choice without pointer input or color-only information.", "requiredEvidence": ["filesystem integration fixture", "keyboard trace", "screen-reader output"]},
+    {"id": "UI-06", "scenario": "Core flow is repeated with high contrast, text scaling, and reduced motion enabled.", "requiredEvidence": ["approved platform runtime", "visual inspection", "accessibility-tree inspection"]}
+  ],
+  "usabilityPlan": {
+    "status": "proposed-pending-product-scope",
+    "participants": "Recruit representative users from the human-approved primary segment, including keyboard-only and screen-reader users where feasible; record any coverage gap as a limitation.",
+    "tasks": ["Add a download and choose a destination", "Pause and resume", "Recover from interruption", "Resolve a destination conflict", "Cancel and understand partial-file handling", "Find a completed file"],
+    "measures": ["task completion", "critical errors", "assistance required", "time on task as descriptive evidence", "participant confidence and trust concerns"],
+    "limitations": "Do not generalize qualitative findings statistically; retain contradictory evidence and separate observation, participant statement, interpretation, and assumption."
+  },
+  "traceability": [
+    {"criteria": ["AC-05"], "evidence": ["accessibilityRequirements", "runtimeAcceptanceScenarios", "usabilityPlan"]},
+    {"criteria": ["AC-02", "AC-16", "AC-23", "AC-27"], "evidence": ["interactionContract", "runtimeAcceptanceScenarios"]},
+    {"criteria": ["AC-17"], "evidence": ["accessibilityRequirements", "runtimeAcceptanceScenarios"], "limitation": "Platform-specific execution awaits approved first platform, UI stack, and supported versions."},
+    {"criteria": ["AC-22"], "evidence": ["usabilityPlan"], "limitation": "No participant research evidence is present; this plan does not claim findings."}
+  ],
+  "implementationGate": {
+    "blockedBy": ["Human-approved primary segment and first platform", "Approved bounded MVP and cancellation/conflict policies", "Selected UI technology and supported OS versions", "Available shared download-domain API from downstream implementation"],
+    "exitEvidence": ["UI implementation consuming the shared domain service", "automated accessibility checks", "real runtime keyboard and accessibility-tree tests", "platform screen-reader checks", "independent ENG-15 disposition"]
+  },
+  "knownRisks": [
+    "A premature UI implementation could encode unapproved product policies or duplicate shared-domain business rules.",
+    "Cross-platform framework accessibility behavior cannot be inferred from source code and must be tested on every approved platform.",
+    "Frequent progress announcements can overwhelm assistive-technology users; announcement throttling needs runtime tuning without hiding meaningful state changes.",
+    "No application runtime exists in the repository, so user-visible behavioral evidence cannot yet be produced.",
+    "Independent verification remains outstanding and may only be issued by ENG-15."
+  ]
+}

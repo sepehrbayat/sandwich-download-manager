@@ -1,0 +1,135 @@
+{
+  "schemaVersion": "1.0.0",
+  "recordId": "DAAI-DEVREQ-CYCLE-EVT-20260803-002",
+  "requestId": "DEVREQ-CYCLE-EVT-20260803-002",
+  "planId": "ENGPLAN-CYCLE-EVT-20260803-002",
+  "workstreamId": "WS-07",
+  "status": "implemented-domain-review",
+  "recordedAt": "2026-08-03",
+  "scope": "Data, analytics, and AI boundary for the approved Windows v0.1 implementation. No product telemetry, analytics provider, AI feature, model, user profiling, or remote data pipeline is required or introduced.",
+  "approvedBaseline": {
+    "productDecisionAuthority": "The v0.1 scope is attributed to human product-owner decisions DEC-20260803-001 through DEC-20260803-005, not to user-research findings.",
+    "operationalData": "Versioned download manifests and per-segment checkpoints are local product state owned by the shared Rust download engine; they are not analytics records.",
+    "productAnalytics": "absent-by-default",
+    "ai": "out-of-scope-no-validated-use-case",
+    "research": "Post-build usability research is a future product activity and no participant outcome is claimed by this engineering workstream."
+  },
+  "implementationInspection": {
+    "inspectedComponents": [
+      "packages/download-engine/Cargo.toml",
+      "packages/download-engine/src/lib.rs",
+      "apps/desktop/Cargo.toml",
+      "apps/desktop/src/main.rs",
+      "src/main.js",
+      "package.json"
+    ],
+    "findings": [
+      "The Rust engine dependencies are transfer, serialization, error, asynchronous runtime, and URL-processing libraries; no analytics or AI SDK is declared.",
+      "The Tauri shell declares download-engine and Windows UI adapter dependencies; no analytics or AI SDK is declared.",
+      "The frontend has no third-party runtime dependency and consumes snapshots and clipboard offers through the Tauri bridge.",
+      "Download URL, output path, status, byte totals, and segment offsets are persisted for local execution and recovery by the shared Rust engine.",
+      "Clipboard candidates remain adapter-to-UI offers and are not an analytics input; non-URL and dismissed clipboard content must not be persisted or logged."
+    ],
+    "businessRuleBoundary": "Analytics and AI adapters do not exist in v0.1. Any future measurement adapter may consume an explicitly approved redacted domain result, but must not reconstruct lifecycle truth, mutate downloads, gate commands, or duplicate URL, filename, collision, progress, or recovery rules."
+  },
+  "dataClassification": [
+    {
+      "class": "never-collect-for-analytics",
+      "examples": ["credentials", "authorization headers", "signed URL query values", "clipboard contents", "downloaded file contents"]
+    },
+    {
+      "class": "sensitive-local-operational",
+      "examples": ["source and redirect URLs", "filenames", "destination and partial paths", "download identifiers", "free-form error text"],
+      "handling": "Use only where required for local product behavior; do not export as telemetry."
+    },
+    {
+      "class": "potential-coarse-measurement",
+      "examples": ["lifecycle state enum", "bounded duration bucket", "bounded byte bucket", "approved coarse failure category"],
+      "handling": "Not collected in v0.1; eligible only after the enablement gate below."
+    }
+  ],
+  "measurementBoundary": {
+    "currentDecision": "No product instrumentation is enabled for v0.1.",
+    "permittedEngineeringEvidence": [
+      "Local automated test results using synthetic fixtures",
+      "Local performance measurements that exclude URLs, paths, credentials, clipboard values, downloaded content, participant data, and free-form error text",
+      "Explicitly consented and access-controlled post-build research records governed outside application telemetry"
+    ],
+    "forbiddenPurposes": [
+      "Cross-device identity, fingerprinting, profiling, advertising, or behavioral targeting",
+      "Capturing full URLs, query strings, filenames, paths, clipboard contents, credentials, IP addresses, downloaded content, or browsing history",
+      "Using analytics or model output to change download state, retries, destination policy, safety decisions, or file actions"
+    ]
+  },
+  "futureEnablementGate": [
+    "Human approval of a specific measurement question and purpose",
+    "A privacy specification for notice, opt-in consent, withdrawal, minimization, retention, deletion, access, and processing location",
+    "A versioned allowlist event schema that rejects unknown fields and unbounded strings",
+    "A field-level threat model and tests proving redaction occurs before persistence or transport",
+    "Provider security, processor, cost, license, open-source distribution, and uninstall review",
+    "Runtime network inspection proving silence before consent and after withdrawal",
+    "Independent engineering verification by ENG-15"
+  ],
+  "candidateMeasurementQuestions": [
+    "Can representative Windows users complete URL intake, destination selection, pause, resume, cancel, recovery, open, and reveal tasks?",
+    "Do queue controls remain understandable and keyboard operable across lifecycle states?",
+    "Do controlled concurrent transfers remain within approved responsiveness and resource budgets?"
+  ],
+  "aiDisposition": {
+    "decision": "Do not add AI to v0.1.",
+    "rationale": "The five approved capabilities are deterministic transfer and desktop-integration problems with no validated need for probabilistic inference.",
+    "prohibitedUses": [
+      "Sending URLs, filenames, paths, credentials, clipboard contents, downloaded files, manifests, or error logs to a model provider",
+      "Using model output to authorize state transitions, retries, destination writes, completion, cancellation, recovery, file safety, opening, or execution",
+      "Making core download behavior depend on network-hosted inference"
+    ],
+    "futureConditions": [
+      "Document a validated user problem and compare a deterministic alternative.",
+      "Define quality, harmful-error, latency, resource, accessibility, privacy, security, and cost budgets.",
+      "Keep any model output advisory, optional, transparent about uncertainty, and removable without breaking core downloads."
+    ]
+  },
+  "acceptanceTraceability": [
+    {
+      "criteria": ["AC-07", "AC-23"],
+      "evidence": ["approvedBaseline.productDecisionAuthority", "approvedBaseline.productAnalytics", "approvedBaseline.ai"],
+      "result": "The implementation boundary preserves the approved scope and exclusions without presenting owner decisions as research findings."
+    },
+    {
+      "criteria": ["AC-09", "AC-10", "AC-11"],
+      "evidence": ["approvedBaseline.research", "measurementBoundary.permittedEngineeringEvidence", "candidateMeasurementQuestions"],
+      "result": "Post-build discovery remains future, consented work; this record makes no participant, observation, preference, platform-expansion, or browser-integration claim."
+    },
+    {
+      "criteria": ["AC-18", "AC-20", "AC-24"],
+      "evidence": ["implementationInspection.businessRuleBoundary", "implementationInspection.findings"],
+      "result": "Operational and intake truth remains in the shared engine and thin adapters; this record does not claim issue closure or independent readiness."
+    },
+    {
+      "criteria": ["AC-28"],
+      "evidence": ["futureEnablementGate"],
+      "result": "Independent engineering disposition remains reserved for ENG-15."
+    }
+  ],
+  "securityPrivacyReview": {
+    "result": "No analytics or AI dependency, credential, endpoint, storage, background queue, or remote processing boundary was introduced.",
+    "requiredRegressionChecks": [
+      "Dependency inspection continues to show no analytics or model SDK unless separately approved.",
+      "Application traffic inspection shows only user-requested download traffic and no telemetry endpoint.",
+      "Non-URL and dismissed clipboard text is absent from manifests, diagnostics, and application storage.",
+      "Diagnostic and performance output excludes full URLs, paths, filenames, clipboard values, credentials, downloaded content, and free-form errors."
+    ]
+  },
+  "implementationNotes": [
+    "No application source change is necessary for this domain because the correct v0.1 implementation is the absence of analytics and AI integrations.",
+    "This inspectable record is the WS-07 domain output; it does not replace runtime transfer, accessibility, privacy, or independent verification owned by other workstreams.",
+    "If measurement is later approved, implement one optional adapter consuming allowlisted shared-domain outputs after redaction; do not add measurement rules to the UI or duplicate domain logic."
+  ],
+  "knownRisks": [
+    "Operational manifests necessarily contain sensitive URLs and local paths; filesystem permissions, retention, and diagnostic handling require security workstream review.",
+    "Dependency or diagnostic changes in later workstreams could introduce undisclosed collection after this inspection.",
+    "Even coarse events can become identifying when timestamps, identifiers, or combinations are too precise.",
+    "Post-build research evidence does not yet exist, so usability, trust, and future platform or browser-integration recommendations remain unverified.",
+    "Independent verification remains pending for ENG-15."
+  ]
+}

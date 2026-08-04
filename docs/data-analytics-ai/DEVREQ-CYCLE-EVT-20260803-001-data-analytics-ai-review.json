@@ -1,0 +1,125 @@
+{
+  "schemaVersion": "1.0.0",
+  "recordId": "DAAI-DEVREQ-CYCLE-EVT-20260803-001",
+  "requestId": "DEVREQ-CYCLE-EVT-20260803-001",
+  "planId": "ENGPLAN-CYCLE-EVT-20260803-001",
+  "workstreamId": "WS-07",
+  "status": "review-completed-implementation-blocked",
+  "recordedAt": "2026-08-03",
+  "scope": "Data, analytics, and AI domain review only. No telemetry, analytics provider, AI feature, model, data pipeline, production integration, or user tracking is approved or implemented.",
+  "dependencyEvidence": {
+    "architectureRecord": "docs/architecture/DEVREQ-CYCLE-EVT-20260803-001-solution-architecture.json",
+    "architectureStatus": "proposed-blocked-pending-human-decisions",
+    "architectureFinding": "No analytics dependency is justified for the baseline; telemetry is undecided and must be absent by default or minimized, transparent, and consent-based.",
+    "sharedBusinessRuleBoundary": "The shared download domain service owns download states, transitions, and policies. Any future analytics adapter may observe approved, redacted domain outputs but may not infer state, mutate downloads, gate commands, or redefine business rules."
+  },
+  "domainDisposition": {
+    "operationalData": {
+      "status": "required-locally-for-product-operation",
+      "boundary": "Durable download metadata and recovery facts belong to the download repository contract, not an analytics store.",
+      "constraints": [
+        "Collect only fields required to execute and recover downloads.",
+        "Do not repurpose source URLs, destination paths, remote identities, failure details, or credentials for analytics.",
+        "Do not export operational records without a separately approved purpose, consent model, and data-flow review."
+      ]
+    },
+    "telemetry": {
+      "status": "not-approved-absent-by-default",
+      "rationale": "No approved product question, lawful basis, retention policy, consent experience, or provider exists.",
+      "enablementGate": [
+        "A human-approved measurement purpose and product question",
+        "A privacy specification covering notice, consent, minimization, retention, deletion, access, and data location",
+        "A reviewed event contract and sensitive-data threat model",
+        "A user control that defaults off and is equally easy to withdraw",
+        "Provider, processor, security, cost, and open-source dependency review",
+        "Runtime network and sensitive-log verification plus independent ENG-15 disposition"
+      ]
+    },
+    "ai": {
+      "status": "deferred-no-validated-use-case",
+      "rationale": "The approved evidence contains no user problem that requires probabilistic inference or a model. Core download behavior must remain deterministic, local-capable, and owned by the shared domain service.",
+      "prohibitedBaselineUses": [
+        "Using a model to authorize state transitions, destination writes, retries, cancellation, completion, or recovery",
+        "Sending URLs, filenames, paths, credentials, downloaded content, or failure logs to a model provider",
+        "Executing, classifying as safe, or automatically opening downloaded files based on model output"
+      ],
+      "futureEvaluation": [
+        "Document a validated user problem and a deterministic non-AI alternative.",
+        "Define quality, latency, resource, accessibility, privacy, security, failure, and cost budgets.",
+        "Prefer optional local inference where it can meet the approved need; require explicit consent for any remote processing.",
+        "Keep model output advisory, explain uncertainty, provide a non-AI path, and test harmful false positives and false negatives."
+      ]
+    }
+  },
+  "measurementPlan": {
+    "currentDecision": "Do not instrument product analytics until the telemetry enablement gate is approved.",
+    "permittedPreApprovalEvidence": [
+      "Local automated test results using synthetic fixtures",
+      "Local performance measurements that contain no URL, path, credential, file-content, or participant data",
+      "Consented, access-controlled usability research governed by the approved research privacy process"
+    ],
+    "candidateQuestionsRequiringApproval": [
+      "Can representative users complete URL intake, destination selection, pause, resume, cancel, retry, locate, and restart-recovery tasks?",
+      "Do transfers and UI controls remain within approved platform resource and responsiveness budgets?",
+      "Which explicit, user-visible errors prevent successful completion of the core journey?"
+    ],
+    "nonGoals": [
+      "Cross-device identity or user profiling",
+      "Advertising, attribution, fingerprinting, or behavioral targeting",
+      "Collection of download content, complete URLs, query strings, filenames, destination paths, credentials, IP addresses, or browser history",
+      "Analytics-derived changes to download state or policy"
+    ]
+  },
+  "futureEventContract": {
+    "status": "design-only-not-authorized-for-instrumentation",
+    "principles": [
+      "Events originate only from accepted shared-domain results or trusted UI outcomes; adapters do not reconstruct domain truth.",
+      "Use a random installation-scoped identifier only if approved; do not create a cross-device or account identity.",
+      "Use coarse enums and bounded numeric values; reject unknown fields and unbounded strings.",
+      "Apply redaction before persistence or transport and provide an offline queue that is disabled when consent is absent or withdrawn.",
+      "Observability needed for local diagnosis remains separate from optional product analytics."
+    ],
+    "candidateEvents": [
+      {"name": "download_state_changed", "source": "accepted domain result", "allowedProperties": ["previousState", "currentState", "coarseFailureCategory"], "forbiddenProperties": ["downloadId", "sourceUrl", "redirectUrl", "filename", "destination", "failureMessage"]},
+      {"name": "core_action_requested", "source": "trusted UI adapter", "allowedProperties": ["action", "surface"], "forbiddenProperties": ["downloadId", "inputText", "url", "path"]},
+      {"name": "recovery_outcome", "source": "accepted recovery result", "allowedProperties": ["outcome", "coarseFailureCategory"], "forbiddenProperties": ["downloadId", "partialPath", "remoteIdentity", "errorText"]}
+    ],
+    "note": "Names and properties are candidates for review, not an implementation instruction or permission to collect."
+  },
+  "securityPrivacyReview": {
+    "dataClasses": [
+      {"class": "strictly-sensitive", "examples": ["credentials", "authorization headers", "signed URL query values", "downloaded content"], "analyticsHandling": "never collect"},
+      {"class": "sensitive", "examples": ["URLs", "filenames", "destination and partial paths", "remote identities", "free-form errors"], "analyticsHandling": "never collect in baseline; future use requires explicit field-level approval and redaction proof"},
+      {"class": "coarse-operational", "examples": ["domain state enum", "approved failure category", "bounded duration or byte bucket"], "analyticsHandling": "eligible only after the telemetry enablement gate"}
+    ],
+    "requiredTestsBeforeEnablement": [
+      "Consent defaults off, blocks collection and transport, and withdrawal stops and clears optional queued telemetry according to approved policy.",
+      "URL credentials, query values, fragments, paths, filenames, headers, content, and free-form errors cannot enter event payloads or analytics logs.",
+      "Schema validation rejects unknown fields, unbounded values, and direct identifiers.",
+      "Offline and failed-delivery behavior respects retention, capacity, encryption, and deletion rules.",
+      "Network inspection proves no analytics traffic occurs before consent or after withdrawal.",
+      "Provider endpoints, certificates, redirects, authentication, retry limits, and regional processing match the approved data-flow record."
+    ],
+    "reviewResult": "No analytics or AI dependency is introduced, which avoids adding an unapproved data-exfiltration or model-supply-chain boundary. Runtime security outcomes cannot be claimed because no implementation exists."
+  },
+  "traceability": [
+    {"criteria": ["AC-01", "AC-10", "AC-11", "AC-13", "AC-18", "AC-21", "AC-26"], "evidence": ["domainDisposition.telemetry", "domainDisposition.ai", "measurementPlan"], "limitation": "Human approval of the product scope and telemetry disposition is still required."},
+    {"criteria": ["AC-02", "AC-16", "AC-23", "AC-27"], "evidence": ["dependencyEvidence.sharedBusinessRuleBoundary", "futureEventContract.principles"], "limitation": "This review does not implement or verify the download journey."},
+    {"criteria": ["AC-05", "AC-06", "AC-07", "AC-08", "AC-09", "AC-12", "AC-22", "AC-25"], "evidence": ["measurementPlan.permittedPreApprovalEvidence", "measurementPlan.candidateQuestionsRequiringApproval"], "limitation": "No participant research or usability result is claimed."},
+    {"criteria": ["AC-19", "AC-30"], "evidence": ["status", "securityPrivacyReview.reviewResult"], "limitation": "Independent disposition is reserved for ENG-15."}
+  ],
+  "implementationNotes": [
+    "No application code, event SDK, analytics provider, model, database, data pipeline, infrastructure, credential, deployment, or production data was created or used.",
+    "The candidate event contract is deliberately non-executable and does not authorize instrumentation.",
+    "If telemetry is later approved, implement it as an optional adapter consuming redacted outputs from the shared domain service; do not duplicate download rules in UI, analytics, or AI code.",
+    "Any user-visible consent or analytics behavior requires a real DOM, desktop runtime, browser, integration, or equivalent behavioral test."
+  ],
+  "knownRisks": [
+    "The primary segment, first platform, bounded MVP, telemetry policy, and research plan still require accountable human decisions.",
+    "Even coarse event combinations can become identifying when volume, timestamps, or installation identifiers are too precise.",
+    "Third-party analytics or model SDKs can add network, supply-chain, licensing, cost, and platform-packaging obligations inconsistent with a minimal open-source baseline.",
+    "Performance diagnostics can accidentally capture sensitive URLs, paths, or error text unless their schema and logs are tested.",
+    "No implementation exists, so consent, redaction, retention, deletion, network silence, accessibility, performance, or security behavior has been demonstrated.",
+    "Independent verification remains outstanding and may only be issued by ENG-15."
+  ]
+}

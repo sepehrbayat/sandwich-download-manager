@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.0.0",
+  "planId": "ENGPLAN-CYCLE-EVT-20260803-002",
+  "workstreamId": "WS-14",
+  "ownerRole": "ENG-14",
+  "producerActorId": "actor-eng-14",
+  "status": "completed",
+  "verificationDisposition": "not_applicable",
+  "implementationRevision": "pending",
+  "changedComponents": [
+    "docs/technical-documentation/DEVREQ-CYCLE-EVT-20260803-002-technical-operations-guide.json"
+  ],
+  "commands": [
+    "Get-Content -Raw -LiteralPath '.development-os\\runs\\ENGPLAN-CYCLE-EVT-20260803-002-WS-14-input.json'",
+    "rg --files -g '!node_modules' -g '!.git' | Sort-Object; git status --short",
+    "Get-ChildItem -Recurse -File -Path apps,packages,src,tests,docs,.github | Where-Object { $_.FullName -notmatch '\\node_modules\\' } | ForEach-Object { $_.FullName.Substring($PWD.Path.Length + 1) } | Sort-Object",
+    "Get-ChildItem -Path apps,packages,src,tests,docs,.github -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notlike '*\\node_modules\\*' -and $_.FullName -notlike '*\\target\\*' -and $_.FullName -notlike '*\\.playwright-cli\\*' } | Select-Object -ExpandProperty FullName",
+    "Get-Content -Raw for the existing technical guide, package.json, desktop and engine manifests, Tauri configuration, desktop entry point, Windows verification script, and Windows CI workflow",
+    "Get-Content -Raw for the engine implementation, engine runtime tests, WS-09 security review, and WS-12 delivery documentation",
+    "Get-Content -Raw docs\\technical-documentation\\DEVREQ-CYCLE-EVT-20260803-002-technical-operations-guide.json | ConvertFrom-Json | Out-Null; npm run verify:windows; git diff --check",
+    "Inspect the generated guide with ConvertFrom-Json, Get-FileHash -Algorithm SHA256, and git status --short",
+    "Get-Date -Format o"
+  ],
+  "evidence": [
+    "Added an inspectable JSON technical operations guide containing architecture ownership, runtime flow, local runbook, recovery and migration guidance, acceptance-criteria traceability, implementation notes, and eight known risks.",
+    "npm run verify:windows exited 0: Node v24.16.0, npm 11.13.0, rustc 1.97.0, cargo 1.97.0; 2 frontend tests passed; 4 shared-engine runtime tests passed; engine formatting passed; locked Tauri cargo check passed.",
+    "The engine runtime suite behaviorally exercised segmented and Range-ignored fallback downloads with byte equality, manifest backup/restore validation, restart classification, filename containment, and transfer metrics.",
+    "git diff --check exited 0.",
+    "The generated guide parsed successfully as JSON and reported recordId TECHDOC-DEVREQ-CYCLE-EVT-20260803-002, 9 traceability entries, 8 known risks, and SHA-256 3A4DC185FC561DA230F71A68DDC6BF6ACFAD1303C6257DA53FE7E02E9AE65B14.",
+    "git status confirmed only docs/technical-documentation/DEVREQ-CYCLE-EVT-20260803-002-technical-operations-guide.json as this workstream's new component."
+  ],
+  "knownRisks": [
+    "Pause, resume, and cancel currently update only in-memory desktop state and do not control the running transfer; persisted offsets are not used to continue transfer bytes.",
+    "Segment responses are buffered without explicit timeout or size caps, and length-only integrity checks do not bind segments to one remote object version.",
+    "Full URLs are persisted and emitted without a complete redaction and retention policy; destination containment does not defend reparse-point races.",
+    "The queue lacks live active-transfer progress events, and Windows WebView keyboard and screen-reader behavior still requires independent runtime verification.",
+    "A root GPL-3.0 LICENSE, advisory scan, dependency-license evidence, signed installer evidence, and distribution approval remain outside this workstream's permitted boundary."
+  ],
+  "completedAt": "2026-08-03T19:50:24.3246741+03:30"
+}

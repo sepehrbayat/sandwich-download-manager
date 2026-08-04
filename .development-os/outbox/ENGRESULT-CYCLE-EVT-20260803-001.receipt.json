@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "1.0.0",
+  "receiptId": "SYNC-OUT-CYCLE-EVT-20260803-001",
+  "direction": "development_to_product",
+  "contractType": "engineering_result",
+  "contractId": "ENGRESULT-CYCLE-EVT-20260803-001",
+  "contractDigest": "9a63a2709851dbb3c258aef78d6510343468f47005bd95a96bf9a88db2be75cd",
+  "sourceRevision": "80e5b2d6b1fb3a3efac1063eae1062a51a00f2d21f6fd70b77bd30412e8a08bc",
+  "storedAt": ".development-os/outbox/ENGRESULT-CYCLE-EVT-20260803-001.json",
+  "createdAt": "2026-08-03T14:12:47.928Z"
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "1.0.0",
+  "receiptId": "SYNC-IN-CYCLE-EVT-20260803-001",
+  "direction": "product_to_development",
+  "contractType": "development_request",
+  "contractId": "DEVREQ-CYCLE-EVT-20260803-001",
+  "contractDigest": "18145078693128f90f4159887e3ab3cfccfa889ad952b75f6e1c720cab8fa884",
+  "sourceRevision": "2cee51b3720ca99eb34c4ce00db192fa1403b06b",
+  "storedAt": ".development-os/inbox/DEVREQ-CYCLE-EVT-20260803-001.json",
+  "createdAt": "2026-08-03T12:42:35.575Z"
+}

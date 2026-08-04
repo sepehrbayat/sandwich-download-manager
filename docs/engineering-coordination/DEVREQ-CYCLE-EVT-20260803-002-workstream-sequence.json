@@ -1,0 +1,106 @@
+{
+  "schemaVersion": "1.0.0",
+  "requestId": "DEVREQ-CYCLE-EVT-20260803-002",
+  "planId": "ENGPLAN-CYCLE-EVT-20260803-002",
+  "coordinatingWorkstreamId": "WS-01",
+  "scopeStatement": "Engineering coordination for the approved Windows v0.1 implementation. This workstream sequences delivery, records dependencies and blockers, and reserves independent verification for ENG-15; it does not duplicate implementation owned by downstream workstreams.",
+  "sequence": [
+    {
+      "stage": 1,
+      "workstreams": ["WS-01"],
+      "exitCriteria": ["Coordination sequence, dependency register, scope traceability, and blockers are inspectable"]
+    },
+    {
+      "stage": 2,
+      "workstreams": ["WS-02"],
+      "entryCriteria": ["WS-01 coordination output is complete"],
+      "exitCriteria": ["One canonical topology assigns the shared Rust engine, persistence, Tauri shell, and Windows adapters without duplicating business rules"]
+    },
+    {
+      "stage": 3,
+      "workstreams": ["WS-03", "WS-04", "WS-05", "WS-06", "WS-07", "WS-08", "WS-11", "WS-12", "WS-13"],
+      "entryCriteria": ["WS-02 topology and interfaces are available"],
+      "exitCriteria": ["Buildable implementation and domain evidence exist for every applicable approved capability; non-applicable domains explicitly record why"]
+    },
+    {
+      "stage": 4,
+      "workstreams": ["WS-09", "WS-14"],
+      "entryCriteria": ["Their declared upstream implementation outputs are available"],
+      "exitCriteria": ["Security, privacy, compliance, architecture, and operating documentation are aligned to implemented behavior"]
+    },
+    {
+      "stage": 5,
+      "workstreams": ["WS-10"],
+      "entryCriteria": ["Implementation and WS-09 review evidence are available"],
+      "exitCriteria": ["Behavioral automated tests cover transfer integrity, recovery, Range fallback, filename safety, and applicable runtime UI flows"]
+    },
+    {
+      "stage": 6,
+      "workstreams": ["WS-15"],
+      "entryCriteria": ["WS-01 through WS-14 have terminal results and the application is buildable"],
+      "exitCriteria": ["ENG-15 independently reproduces material behavior and issues the sole engineering verification disposition"]
+    }
+  ],
+  "dependencyRegister": [
+    {"workstream": "WS-02", "dependsOn": ["WS-01"]},
+    {"workstream": "WS-03", "dependsOn": ["WS-02"]},
+    {"workstream": "WS-04", "dependsOn": ["WS-02"]},
+    {"workstream": "WS-05", "dependsOn": ["WS-02"]},
+    {"workstream": "WS-06", "dependsOn": ["WS-02"]},
+    {"workstream": "WS-07", "dependsOn": ["WS-02"]},
+    {"workstream": "WS-08", "dependsOn": ["WS-02"]},
+    {"workstream": "WS-11", "dependsOn": ["WS-02"]},
+    {"workstream": "WS-12", "dependsOn": ["WS-02"]},
+    {"workstream": "WS-13", "dependsOn": ["WS-02"]},
+    {"workstream": "WS-09", "dependsOn": ["WS-02", "WS-03", "WS-04", "WS-05", "WS-06", "WS-07", "WS-08", "WS-11", "WS-12", "WS-13"]},
+    {"workstream": "WS-10", "dependsOn": ["WS-03", "WS-04", "WS-05", "WS-06", "WS-07", "WS-08", "WS-09", "WS-11", "WS-12", "WS-13"]},
+    {"workstream": "WS-14", "dependsOn": ["WS-02", "WS-03", "WS-04", "WS-05", "WS-06", "WS-07", "WS-08", "WS-11", "WS-12", "WS-13"]},
+    {"workstream": "WS-15", "dependsOn": ["WS-01", "WS-02", "WS-03", "WS-04", "WS-05", "WS-06", "WS-07", "WS-08", "WS-09", "WS-10", "WS-11", "WS-12", "WS-13", "WS-14"]}
+  ],
+  "blockerRegister": [
+    {
+      "id": "BLK-01",
+      "status": "open",
+      "blocks": ["AC-01", "AC-12", "AC-25", "AC-29"],
+      "reason": "The approved request requires root Cargo.toml and LICENSE files, but this run's authoritative allowedPaths do not include either root path.",
+      "resolutionOwner": "orchestrator or a later workstream with an expanded approved write boundary"
+    },
+    {
+      "id": "BLK-02",
+      "status": "open",
+      "blocks": ["Engineering completion claim"],
+      "reason": "The repository currently contains planning evidence and no Rust/Tauri application source; implementation and behavioral evidence remain downstream work.",
+      "resolutionOwner": "WS-02 through WS-14"
+    },
+    {
+      "id": "BLK-03",
+      "status": "open",
+      "blocks": ["Independent passing disposition"],
+      "reason": "Only ENG-15 may issue the independent engineering disposition after all preceding workstreams report terminal results.",
+      "resolutionOwner": "ENG-15"
+    }
+  ],
+  "acceptanceTraceability": [
+    {"area": "workspace, Tauri topology, shared engine, and GPL licensing", "criteria": ["AC-01", "AC-12", "AC-18", "AC-25", "AC-29"], "primaryOwners": ["WS-02", "WS-04", "WS-05", "WS-12"]},
+    {"area": "segmented transfer, fallback, persistence, recovery, and integrity", "criteria": ["AC-02", "AC-03", "AC-13", "AC-14", "AC-19", "AC-26", "AC-30"], "primaryOwners": ["WS-04", "WS-06", "WS-10"]},
+    {"area": "queue states, progress, speed, ETA, accessibility, and Windows evaluation", "criteria": ["AC-04", "AC-08", "AC-15", "AC-22", "AC-27"], "primaryOwners": ["WS-03", "WS-05", "WS-10"]},
+    {"area": "destination, filename safety, collisions, and Windows shell actions", "criteria": ["AC-05", "AC-16", "AC-21", "AC-27"], "primaryOwners": ["WS-04", "WS-05", "WS-06", "WS-09", "WS-10"]},
+    {"area": "confirmation-based clipboard intake and privacy", "criteria": ["AC-06", "AC-17", "AC-20", "AC-27"], "primaryOwners": ["WS-03", "WS-05", "WS-09", "WS-10"]},
+    {"area": "approved scope, exclusions, and product/research attribution", "criteria": ["AC-07", "AC-09", "AC-10", "AC-11", "AC-23", "AC-24"], "primaryOwners": ["WS-01", "WS-07", "WS-13", "WS-14"]},
+    {"area": "canonical evidence and independent closure", "criteria": ["AC-28"], "primaryOwners": ["WS-12", "WS-15"]}
+  ],
+  "implementationNotes": [
+    "The approved scope is Windows desktop v0.1 only and is not reopened by this coordination record.",
+    "Transfer, persistence, URL intake, filename, collision, and lifecycle business rules must have one shared Rust domain/service owner consumed by the Tauri UI and Windows adapters.",
+    "Manual URL entry and clipboard offers must converge on the same validation path; clipboard detection must never start a transfer without confirmation.",
+    "User-visible behavior requires real DOM, browser, integration, or equivalent runtime evidence; source-pattern assertions do not qualify.",
+    "No production deployment, production credential use, destructive database operation, Git branch operation, or commit is part of this workstream."
+  ],
+  "knownRisks": [
+    "Root workspace and license deliverables cannot be created under the current allowedPaths and require an explicitly expanded approved boundary.",
+    "No application implementation exists yet, so no product behavior, buildability, accessibility, or runtime performance claim is currently supported.",
+    "HTTP server variance, restart-safe segment persistence, byte-correct assembly, Windows path rules, shell-action failure, and clipboard privacy are high-risk implementation areas.",
+    "Tauri Windows builds depend on a compatible Rust toolchain, Node tooling, Microsoft C++ build tools, and WebView2 availability.",
+    "Independent verification remains pending until ENG-15 reproduces the finished implementation."
+  ]
+}

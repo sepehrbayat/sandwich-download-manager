@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "1.0.0",
+  "recordId": "QTA-DEVREQ-CYCLE-EVT-20260803-001",
+  "requestId": "DEVREQ-CYCLE-EVT-20260803-001",
+  "planId": "ENGPLAN-CYCLE-EVT-20260803-001",
+  "workstreamId": "WS-10",
+  "status": "planning-contract-automation-implemented-runtime-validation-blocked",
+  "recordedAt": "2026-08-03",
+  "scope": "Quality automation for the current planning-only repository. This record does not claim application behavior, security, accessibility, release, or production readiness.",
+  "automation": {
+    "runner": "PowerShell 7 or later",
+    "command": "pwsh -NoProfile -File tests/quality/validate-planning-evidence.ps1",
+    "implementation": "tests/quality/validate-planning-evidence.ps1",
+    "checks": [
+      "Required engineering planning records exist and parse as JSON",
+      "Every record traces to DEVREQ-CYCLE-EVT-20260803-001 and ENGPLAN-CYCLE-EVT-20260803-001",
+      "The shared Download domain remains the single owner of state and policy business rules",
+      "Architecture evidence remains explicitly proposed or blocked",
+      "Independent engineering disposition remains reserved for ENG-15",
+      "The canonical queued, active, paused, cancelled, failed, interrupted, and completed states remain traceable"
+    ],
+    "resultFormat": "JSON on stdout with per-check pass/fail evidence and a non-zero exit code on failure"
+  },
+  "regressionStrategy": {
+    "implementedNow": ["Planning-evidence contract validation", "Traceability and false-readiness guardrails"],
+    "blockedUntilExecutableApplicationExists": [
+      "Shared-domain unit and adapter contract tests",
+      "Network, range, restart, storage exhaustion, and byte-integrity integration tests",
+      "Real DOM or equivalent desktop-runtime keyboard, focus, screen-reader, contrast, and reduced-motion tests",
+      "Platform filesystem, packaging, signing, update, and rollback tests",
+      "Concurrency and resource-budget measurements",
+      "Dependency, secret, license, vulnerability, SBOM, provenance, and artifact verification"
+    ]
+  },
+  "traceability": [
+    {"criteria": ["AC-02", "AC-16", "AC-23", "AC-27"], "plannedRuntimeEvidence": "State-transition, destination, recovery, and integrity scenarios against the shared domain and real adapters", "currentEvidence": "Planning contract only"},
+    {"criteria": ["AC-05"], "plannedRuntimeEvidence": "Real DOM or equivalent desktop runtime plus manual platform assistive-technology checks", "currentEvidence": "No user-visible implementation exists"},
+    {"criteria": ["AC-19", "AC-30"], "plannedRuntimeEvidence": "Independent ENG-15 verification of the canonical revision", "currentEvidence": "Reserved; not issued by WS-10"},
+    {"criteria": ["AC-24", "AC-29"], "plannedRuntimeEvidence": "Locked dependency and exact-artifact security and release evidence", "currentEvidence": "Release remains blocked"}
+  ],
+  "businessRuleBoundary": "Download state transitions, URL and destination policy, pause, resume, retry, cancellation, conflict handling, finalization, and recovery must be implemented once in a shared domain or service and consumed by UI and all adapters.",
+  "implementationNotes": [
+    "The validator uses only PowerShell built-ins and adds no dependency or lockfile before the implementation stack and license policy are approved.",
+    "No source-pattern assertion is presented as user-visible behavioral evidence; runtime UI verification is explicitly blocked because no executable UI exists.",
+    "No production, credential, database, deployment, branch, or commit operation is performed."
+  ],
+  "knownRisks": [
+    "Planning-contract tests cannot demonstrate application correctness, security controls, accessibility, resilience, or performance.",
+    "The product owner has not approved the first platform, supported versions, implementation stack, persistence choice, or bounded MVP.",
+    "The validator must evolve into shared-domain, adapter-contract, integration, and real-runtime suites when executable code is introduced.",
+    "Independent verification remains outstanding and may only be issued by ENG-15."
+  ]
+}

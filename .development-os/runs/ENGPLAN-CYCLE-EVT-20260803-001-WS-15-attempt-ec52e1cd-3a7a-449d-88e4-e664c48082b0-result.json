@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "1.0.0",
+  "planId": "ENGPLAN-CYCLE-EVT-20260803-001",
+  "workstreamId": "WS-15",
+  "ownerRole": "ENG-15",
+  "producerActorId": "actor-eng-15",
+  "status": "failed",
+  "verificationDisposition": "failed",
+  "implementationRevision": "pending",
+  "changedComponents": [],
+  "commands": [
+    "Get-Content -Raw -LiteralPath '.development-os\\runs\\ENGPLAN-CYCLE-EVT-20260803-001-WS-15-input.json'",
+    "git status --short; git diff --stat; git diff --cached --stat; rg --files -g '!node_modules' -g '!.git' | Sort-Object",
+    "Get-ChildItem -Recurse -File docs,tests | Select-Object -ExpandProperty FullName; Get-ChildItem -File package*.json | Select-Object Name,Length",
+    "Get-Content -Raw -LiteralPath 'tests\\quality\\validate-planning-evidence.ps1'; Get-Content -Raw -LiteralPath 'docs\\quality-test-automation\\DEVREQ-CYCLE-EVT-20260803-001-quality-test-plan.json'; Get-ChildItem '.development-os\\runs\\ENGPLAN-CYCLE-EVT-20260803-001-WS-*-result.json' | ForEach-Object { $j=Get-Content -Raw $_.FullName | ConvertFrom-Json; [pscustomobject]@{File=$_.Name;Workstream=$j.workstreamId;Status=$j.status;Verification=$j.verificationDisposition;Revision=$j.implementationRevision} } | Format-Table -AutoSize",
+    "pwsh -NoProfile -File tests/quality/validate-planning-evidence.ps1; git diff --check",
+    "Get-ChildItem -Recurse -File docs -Filter '*.json' | Sort-Object FullName | ForEach-Object { $j=Get-Content -Raw $_.FullName | ConvertFrom-Json -Depth 100; [pscustomobject]@{Path=$_.FullName.Substring((Get-Location).Path.Length+1); Workstream=$j.workstreamId; Status=$j.status; RecordedAt=$j.recordedAt; Scope=$j.scope} } | ConvertTo-Json -Depth 5",
+    "PowerShell audit of HEAD, implementation-root file count, package.json presence, documentation JSON count, and scoped Git status"
+  ],
+  "evidence": [
+    "Planning-evidence validator passed with 12 records inspected and zero failures, confirming request/plan traceability, one shared Download domain owner, proposed-blocked architecture status, ENG-15 verifier reservation, and planning references for seven canonical states.",
+    "git diff --check exited 0, with only a line-ending warning for the pre-existing engineering/taskboard/workstreams.csv modification.",
+    "Canonical inspected revision was afa80b80c5becf74b7620d62c50ff1ee00babefe.",
+    "Independent audit found 14 planning JSON records, zero implementation files under src, app, apps, packages, or services, and no package.json.",
+    "Documentation statuses explicitly report pending human decisions and blocked implementation, runtime validation, automation, or release readiness.",
+    "No real DOM, native runtime, integration implementation, or equivalent behavioral target exists, so user-visible download behavior and material resilience, accessibility, security, compatibility, and performance claims could not be reproduced.",
+    "Scoped Git status reported docs/ and tests/ as untracked; the inspected planning evidence is not contained in the canonical revision.",
+    "No repository files were modified during this verification run."
+  ],
+  "knownRisks": [
+    "The passing validator establishes planning-record consistency, not satisfaction of the 30 acceptance criteria.",
+    "Required human-approved product decisions, an approved product brief, and discovery evidence remain absent.",
+    "First platform, bounded MVP, supported versions, license, governance, signing, update strategy, and release ownership remain unresolved.",
+    "Download transitions, restart recovery, destination handling, integrity, accessibility, security, compatibility, and performance remain unimplemented and behaviorally unverified.",
+    "The inspected documentation and test evidence are untracked and therefore absent from the canonical revision."
+  ],
+  "completedAt": "2026-08-03T17:40:57.4698656+03:30"
+}
