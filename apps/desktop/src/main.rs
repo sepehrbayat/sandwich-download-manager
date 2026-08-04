@@ -333,6 +333,17 @@ fn spawn_clipboard_watcher(app: AppHandle) {
 
 fn main() {
     tauri::Builder::default()
+        // A second launch must not start a second engine. Two instances write the same
+        // session file and race each other over it, and the browser bridge can only point at
+        // one of them — so the second copy quietly breaks the first. Focus the existing
+        // window instead, which is what the user meant by clicking the shortcut again.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.webview_windows().values().next() {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
