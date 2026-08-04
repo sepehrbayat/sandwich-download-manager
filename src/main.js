@@ -448,17 +448,30 @@ elements.form.addEventListener("submit", async (event) => {
   }
 });
 
+async function persistSettings() {
+  try {
+    await bridge.invoke("save_settings", {
+      settings: { destination, organize_by_type: elements.organize.checked }
+    });
+  } catch {
+    // Preferences are a convenience; failing to store them must not interrupt a download.
+  }
+}
+
 elements.chooseFolder.addEventListener("click", async () => {
   try {
     const selected = await bridge.invoke("choose_destination");
     if (selected) {
       destination = selected;
       elements.destination.textContent = selected;
+      persistSettings();
     }
   } catch (error) {
     showError(error.message ?? String(error));
   }
 });
+
+elements.organize.addEventListener("change", persistSettings);
 
 async function forEachVisible(action) {
   const targets = downloads.filter((item) => matchesFilter(item, filter));
@@ -522,4 +535,17 @@ bridge.listen("clipboard-url-offer", ({ payload }) => {
   elements.queueStatus.textContent = "A copied download link is ready for confirmation.";
 });
 
-refresh();
+async function restoreSettings() {
+  try {
+    const stored = await bridge.invoke("load_settings");
+    if (stored?.destination) {
+      destination = stored.destination;
+      elements.destination.textContent = stored.destination;
+    }
+    elements.organize.checked = Boolean(stored?.organize_by_type);
+  } catch {
+    // First run, or preferences unavailable: the defaults in the markup already apply.
+  }
+}
+
+restoreSettings().finally(refresh);

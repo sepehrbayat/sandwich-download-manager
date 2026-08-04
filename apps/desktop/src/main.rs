@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod settings;
+
 use aria2_client::{Aria2, Aria2Status};
 use download_policy::DownloadStatus;
 use serde::{Deserialize, Serialize};
@@ -50,6 +52,7 @@ struct ClipboardOffer {
 
 struct AppState {
     engine: Option<Arc<Aria2>>,
+    config_dir: PathBuf,
 }
 
 impl AppState {
@@ -153,6 +156,16 @@ async fn list_downloads(state: State<'_, AppState>) -> Result<Vec<Snapshot>, Str
         .await
         .map_err(|error| error.to_string())?;
     Ok(all.iter().map(to_snapshot).collect())
+}
+
+#[tauri::command]
+fn load_settings(state: State<'_, AppState>) -> settings::Settings {
+    settings::load(&state.config_dir)
+}
+
+#[tauri::command]
+fn save_settings(state: State<'_, AppState>, settings: settings::Settings) -> Result<(), String> {
+    settings::save(&state.config_dir, &settings).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -325,11 +338,11 @@ fn main() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let handle = app.handle().clone();
-            let session_dir = app
+            let data_dir = app
                 .path()
                 .app_data_dir()
-                .unwrap_or_else(|_| std::env::temp_dir())
-                .join("engine");
+                .unwrap_or_else(|_| std::env::temp_dir());
+            let session_dir = data_dir.join("engine");
 
             // Starting the engine before the window is ready keeps the first render honest:
             // the UI never claims "connected" while the queue is unavailable.
@@ -343,7 +356,10 @@ fn main() {
             if let Some(engine) = engine.as_ref() {
                 spawn_progress_poller(handle.clone(), engine.clone());
             }
-            app.manage(AppState { engine });
+            app.manage(AppState {
+                engine,
+                config_dir: data_dir,
+            });
             spawn_clipboard_watcher(handle);
             Ok(())
         })
@@ -352,6 +368,8 @@ fn main() {
             choose_destination,
             submit_url,
             confirm_clipboard_offer,
+            load_settings,
+            save_settings,
             control_download,
             open_completed_file,
             reveal_completed_file
