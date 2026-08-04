@@ -26,6 +26,27 @@
     "targets": [
       "msi",
       "nsis"
+    ],
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "publisher": "Sandwich",
+    "copyright": "GPL-3.0-only",
+    "category": "Utility",
+    "shortDescription": "Free, open-source download manager",
+    "longDescription": "Sandwich is a free and open-source download manager for Windows. It splits each transfer into segments for speed, resumes reliably after interruptions, and keeps a clean, readable queue.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "English"
+        ]
+      }
+    },
+    "resources": [
+      "binaries/aria2c.exe",
+      "binaries/aria2-COPYING.txt",
+      "binaries/aria2-LICENSE.OpenSSL.txt"
     ]
   }
 }

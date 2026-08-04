@@ -346,7 +346,20 @@ fn main() {
 
             // Starting the engine before the window is ready keeps the first render honest:
             // the UI never claims "connected" while the queue is unavailable.
-            let engine = match tauri::async_runtime::block_on(Aria2::start(&session_dir)) {
+            // Prefer the engine shipped beside the app; fall back to PATH for a dev run from
+            // the workspace, where no bundle exists yet.
+            let bundled = app
+                .path()
+                .resolve("binaries/aria2c.exe", tauri::path::BaseDirectory::Resource)
+                .ok()
+                .filter(|path| path.exists());
+            let started = match bundled {
+                Some(path) => {
+                    tauri::async_runtime::block_on(Aria2::start_with(&path, &session_dir))
+                }
+                None => tauri::async_runtime::block_on(Aria2::start(&session_dir)),
+            };
+            let engine = match started {
                 Ok(engine) => Some(Arc::new(engine)),
                 Err(error) => {
                     eprintln!("download engine unavailable: {error}");

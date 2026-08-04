@@ -10,7 +10,7 @@ use serde::Deserialize;
 use std::{
     hash::{BuildHasher, Hasher, RandomState},
     net::TcpListener,
-    path::Path,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     time::Duration,
 };
@@ -181,6 +181,15 @@ mod job {
 /// are in their logs.
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Sandwich/0.1";
 
+/// Where transfers land when no destination is supplied.
+fn default_download_dir() -> PathBuf {
+    std::env::var_os("USERPROFILE")
+        .map(PathBuf::from)
+        .map(|home| home.join("Downloads"))
+        .filter(|path| path.exists())
+        .unwrap_or_else(std::env::temp_dir)
+}
+
 pub struct Aria2 {
     endpoint: String,
     secret: String,
@@ -214,7 +223,19 @@ fn free_loopback_port() -> Result<u16, Aria2Error> {
 
 impl Aria2 {
     /// Starts a private aria2c and waits for it to answer.
+    ///
+    /// `engine` is the binary to run. Callers pass the copy shipped beside the app so an
+    /// installed Sandwich does not depend on the user happening to have aria2 on PATH.
+    pub async fn start_with(engine: &Path, session_dir: &Path) -> Result<Self, Aria2Error> {
+        Self::launch(engine.as_os_str().to_owned(), session_dir).await
+    }
+
+    /// Starts a private aria2c and waits for it to answer.
     pub async fn start(session_dir: &Path) -> Result<Self, Aria2Error> {
+        Self::launch("aria2c".into(), session_dir).await
+    }
+
+    async fn launch(program: std::ffi::OsString, session_dir: &Path) -> Result<Self, Aria2Error> {
         let port = free_loopback_port()?;
         let secret = random_secret();
         let session = session_dir.join("sandwich.session");
@@ -222,13 +243,17 @@ impl Aria2 {
             let _ = std::fs::create_dir_all(parent);
         }
 
-        let mut command = Command::new("aria2c");
+        let mut command = Command::new(&program);
         command
             .arg("--enable-rpc")
             .arg("--rpc-listen-all=false")
             .arg(format!("--rpc-listen-port={port}"))
             .arg(format!("--rpc-secret={secret}"))
             // Resume and integrity.
+            // Without an explicit default, aria2 writes to its working directory — which for an
+            // installed app is the install folder. Every path through the UI supplies a
+            // destination, but a default that lands in Program Files is not one to rely on.
+            .arg(format!("--dir={}", default_download_dir().display()))
             .arg("--continue=true")
             .arg("--auto-file-renaming=true")
             .arg("--allow-overwrite=false")
