@@ -1,32 +1,49 @@
 name: Windows CI
 
 on:
-  pull_request:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
-
-concurrency:
-  group: windows-ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  test-and-build:
+  verify:
     runs-on: windows-latest
-    timeout-minutes: 30
-    env:
-      CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v4
-      - name: Record toolchain
-        run: |
-          node --version
-          npm --version
-          rustc --version
-          cargo --version
-      - name: Verify locked tests and build Windows application
-        shell: pwsh
-        run: ./tests/quality/verify-windows-delivery.ps1 -Mode Build
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # The engine lifecycle tests drive a real aria2c; without it they skip rather than fail,
+      # so install it to keep that coverage meaningful in CI.
+      - name: Install aria2
+        run: choco install aria2 --no-progress -y
+
+      - name: Formatting
+        run: cargo fmt --all --check
+
+      - name: Tests
+        run: cargo test --workspace
+
+      - name: Frontend tests
+        run: node --test tests/frontend/*.test.js
+
+      - name: Build installers
+        run: npx --yes @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sandwich-installers
+          path: |
+            target/release/bundle/msi/*.msi
+            target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
