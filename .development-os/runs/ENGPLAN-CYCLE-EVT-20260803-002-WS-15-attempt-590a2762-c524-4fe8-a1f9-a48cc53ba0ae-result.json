@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "1.0.0",
+  "planId": "ENGPLAN-CYCLE-EVT-20260803-002",
+  "workstreamId": "WS-15",
+  "ownerRole": "ENG-15",
+  "producerActorId": "actor-eng-15",
+  "status": "failed",
+  "verificationDisposition": "failed",
+  "implementationRevision": "pending",
+  "changedComponents": [],
+  "commands": [
+    "git status --short; rg --files -g '!node_modules' -g '!.git' | Sort-Object; git diff --check",
+    "$env:CARGO_TARGET_DIR = Join-Path $env:TEMP 'sandwich-ws15-cargo-target'; node --test tests\\frontend\\*.test.js; cargo fmt --manifest-path packages\\download-engine\\Cargo.toml --all -- --check; cargo test --manifest-path packages\\download-engine\\Cargo.toml --locked; cargo check --manifest-path apps\\desktop\\Cargo.toml --locked",
+    "npx --yes --package @playwright/cli playwright-cli -s=ws15 open 'http://127.0.0.1:4317/?fixture=1'; npx --yes --package @playwright/cli playwright-cli -s=ws15 snapshot --json",
+    "npx --yes --package @playwright/cli playwright-cli -s=ws15 click e33; npx --yes --package @playwright/cli playwright-cli -s=ws15 click e24; npx --yes --package @playwright/cli playwright-cli -s=ws15 fill e17 'https://example.com/manual.iso'; npx --yes --package @playwright/cli playwright-cli -s=ws15 click e18; npx --yes --package @playwright/cli playwright-cli -s=ws15 snapshot --json",
+    "npx --yes --package @playwright/cli playwright-cli -s=ws15 click e63; npx --yes --package @playwright/cli playwright-cli -s=ws15 snapshot --json; npx --yes --package @playwright/cli playwright-cli -s=ws15 console warning --json; npx --yes --package @playwright/cli playwright-cli -s=ws15 close",
+    "$env:CARGO_TARGET_DIR = Join-Path $env:TEMP 'sandwich-ws15-cargo-target'; cargo build --manifest-path apps\\desktop\\Cargo.toml --locked; cargo metadata --locked --no-deps --format-version 1; Get-Content LICENSE -TotalCount 5; git rev-parse HEAD; git diff --check; git status --short"
+  ],
+  "evidence": [
+    "Frontend Node tests passed: 2 passed, 0 failed.",
+    "Download-engine behavioral suite passed: 6 passed, covering segmented and Range-ignored fallback byte correctness, persisted pause/resume, cancellation, restart recovery, manifest validation, filename containment, and bounded metrics.",
+    "cargo fmt --check, desktop cargo check, and the locked desktop cargo build completed successfully using an external temporary target directory.",
+    "Cargo metadata confirmed that the Tauri desktop crate consumes the separate download-engine library through a path dependency; both crates declare GPL-3.0-only.",
+    "The root LICENSE begins with the GNU General Public License, Version 3 text.",
+    "A real Chromium fixture run showed queue progress, speed, ETA, active/paused/failed/completed/queued states, accessible labels, clipboard confirmation UI, dismissal, destination selection, manual URL intake, pause transition, focus preservation, and zero browser console errors or warnings.",
+    "Verification failed because every material acceptance claim was not independently reproduced: the browser run used a JavaScript fixture rather than the compiled Tauri runtime, and no reproduced runtime evidence covered Windows Explorer open/reveal execution, malformed and non-URL clipboard handling with persistence inspection, filename collisions and all Windows reserved/absolute-path cases, simulated network-loss recovery, screen-reader behavior, resource responsiveness under concurrent transfers, or dependency-license compliance.",
+    "Final git diff --check exited successfully. Final status showed only the pre-existing modified engineering/taskboard/workstreams.csv and orchestrator-generated untracked .development-os run artifacts; this verifier edited no files.",
+    "Inspected revision was a8cca64daf9813a9c4dcbc359fc63c306d1e031f."
+  ],
+  "knownRisks": [
+    "Passing unit, engine-integration, fixture-browser, and build checks do not establish all Windows-native behavior required by the acceptance criteria.",
+    "The working tree was already non-clean due to orchestration/taskboard state, limiting canonical-revision attribution until the orchestrator seals the aggregate digest."
+  ],
+  "completedAt": "2026-08-03T18:10:13.1536741Z"
+}
