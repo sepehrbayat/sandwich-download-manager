@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Sandwich Download Manager",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Send downloads from your browser to Sandwich Download Manager.",
   "icons": {
     "48": "icon48.png",
@@ -15,7 +15,10 @@
     "contextMenus",
     "notifications"
   ],
-  "host_permissions": ["http://*/*", "https://*/*"],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
