@@ -65,18 +65,29 @@ jobs:
           retention-days: 7
 
       - name: Build installers
-        # Signing is opt-in: without the secret this builds unsigned, so forks and pull
-        # requests still produce installers instead of failing on a secret they cannot read.
+        # Both kinds of signing are opt-in, so forks and pull requests build instead of
+        # failing on secrets they cannot read.
+        #   - Updater signing: the minisign private key stays on the release machine
+        #     (SIGNING.md). With a pubkey in the config Tauri refuses to build updater
+        #     artifacts unsigned, so a keyless build turns them off — this is a
+        #     verification build, not a release.
+        #   - Authenticode: same pattern as before via the thumbprint secret.
         run: |
+          $configs = @("--config", "apps/desktop/tauri.conf.json")
+          $updaterKey = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
+          if ($updaterKey) {
+            $env:TAURI_SIGNING_PRIVATE_KEY = $updaterKey
+          } else {
+            $configs += @("--config", '{"bundle":{"createUpdaterArtifacts":false}}')
+          }
           $thumbprint = "${{ secrets.SIGNING_CERT_THUMBPRINT }}"
           if ($thumbprint) {
             # Tauri does not expand environment variables inside config files, so the
             # thumbprint is supplied as inline JSON rather than a placeholder.
-            $identity = '{"bundle":{"windows":{"certificateThumbprint":"' + $thumbprint + '"}}}'
-            npx --yes @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json --config apps/desktop/tauri.signing.conf.json --config $identity
-          } else {
-            npx --yes @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json
+            $configs += @("--config", "apps/desktop/tauri.signing.conf.json")
+            $configs += @("--config", ('{"bundle":{"windows":{"certificateThumbprint":"' + $thumbprint + '"}}}'))
           }
+          npx --yes @tauri-apps/cli@2 build @configs
 
       - uses: actions/upload-artifact@v4
         with:
