@@ -582,7 +582,10 @@ elements.rail.forEach((button) => {
 
 elements.openAdd.addEventListener("click", () => {
   elements.intake.hidden = false;
-  elements.url.focus();
+  // First run lands on the decision still to make; once a folder is set it sticks, so
+  // returning users go straight to the URL without paying a click for the new field order.
+  if (destination) elements.url.focus();
+  else elements.chooseFolder.focus();
 });
 elements.closeAdd.addEventListener("click", () => {
   elements.intake.hidden = true;

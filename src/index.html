@@ -116,15 +116,9 @@
             <button class="quiet" id="close-add" type="button">Close</button>
           </div>
           <form id="download-form">
-            <label for="url">Download URL</label>
-            <div class="url-row">
-              <input id="url" name="url" type="url" inputmode="url" autocomplete="url" required
-                placeholder="https://example.com/file.zip" aria-describedby="url-help form-error" />
-              <button class="primary" type="submit">Add download</button>
-            </div>
-            <p class="help" id="url-help">HTTP and HTTPS links are checked before the transfer starts.</p>
-            <p class="error" id="form-error" role="alert" hidden></p>
-
+            <!-- Destination first: where a file lands is decided once and reused, the URL
+                 changes every time. Settling the stable half of the form before the variable
+                 half means the common case is "paste and go". -->
             <div class="destination-row">
               <div>
                 <span class="field-label">Save to</span>
@@ -136,6 +130,15 @@
               <input id="organize" type="checkbox" />
               Organize completed files by type
             </label>
+
+            <label for="url">Download URL</label>
+            <div class="url-row">
+              <input id="url" name="url" type="url" inputmode="url" autocomplete="url" required
+                placeholder="https://example.com/file.zip" aria-describedby="url-help form-error" />
+              <button class="primary" type="submit">Add download</button>
+            </div>
+            <p class="help" id="url-help">Files save to the folder above. HTTP and HTTPS links are checked before the transfer starts.</p>
+            <p class="error" id="form-error" role="alert" hidden></p>
           </form>
         </section>
 

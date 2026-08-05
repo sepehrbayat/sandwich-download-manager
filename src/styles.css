@@ -250,6 +250,8 @@ h2 { margin: 2px 0 0; font-size: 17px; letter-spacing: -0.01em; }
 
 label, .field-label { font-weight: 600; font-size: 12.5px; }
 .url-row { display: flex; gap: 8px; margin-top: 6px; }
+/* Destination now leads the form; give the URL block below it its own breathing room. */
+#download-form > label[for="url"] { display: inline-block; margin-top: 14px; }
 
 input[type="url"] {
   flex: 1;
