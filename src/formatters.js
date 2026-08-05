@@ -23,6 +23,23 @@ export function progressPercent(completed, total) {
   return Math.min(100, Math.max(0, (completed / total) * 100));
 }
 
+/**
+ * How much of a cell row byte progress fills, strictly left to right.
+ *
+ * Returns { full, partial }: `full` whole cells, then one frontier cell `partial` (0..1) built.
+ * The bar used to draw aria2's raw piece map, which was true — segmented downloads really do
+ * finish pieces out of order — but read as random noise. Progress people can follow beats
+ * fidelity to internals nobody asked about.
+ */
+export function orderedCells(capacity, completed, total) {
+  if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(completed) || completed <= 0) {
+    return { full: 0, partial: 0 };
+  }
+  const exact = Math.min(1, completed / total) * capacity;
+  const full = Math.min(capacity, Math.floor(exact));
+  return { full, partial: full >= capacity ? 0 : exact - full };
+}
+
 export const statusLabels = {
   queued: "Queued",
   active: "Downloading",

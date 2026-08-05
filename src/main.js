@@ -1,4 +1,4 @@
-import { describeError, formatBytes, formatEta, progressPercent, sourceHost, statusLabels } from "./formatters.js";
+import { describeError, formatBytes, formatEta, orderedCells, progressPercent, sourceHost, statusLabels } from "./formatters.js";
 
 const invoke = window.__TAURI__?.core?.invoke ?? window.__TAURI_INTERNALS__?.invoke;
 const listen = window.__TAURI__?.event?.listen;
@@ -91,39 +91,13 @@ const PROVISIONAL_WIDTH_PX = 640; // only used until the bar has been laid out o
 const MIN_CELLS = 8;
 const MAX_CELLS = 120;
 
-/** Decodes aria2's hex bitfield into one boolean per piece. */
-function decodePieces(bitfield, count) {
-  if (!bitfield || !count) return [];
-  const done = [];
-  for (let index = 0; index < count; index += 1) {
-    const nibble = parseInt(bitfield[index >> 2] ?? "0", 16);
-    done.push(Boolean(nibble & (8 >> (index & 3))));
-  }
-  return done;
-}
+// Six fillings in a fixed assembly order, repeating down the row: classic, cheese, tomato,
+// lettuce, pickle, chicken. Deterministic by cell position — the same file always builds the
+// same sandwich, so the row reads as a deli counter filling up, not confetti.
+const FILLING_COUNT = 6;
 
 function cellCapacity(width) {
   return Math.max(MIN_CELLS, Math.min(MAX_CELLS, Math.floor(width / TARGET_CELL_PX)));
-}
-
-/**
- * Collapses the piece list to the number of cells that fit.
- *
- * Returns 1 for a fully complete cell, 0.5 for one that is partly there, 0 for untouched.
- * The middle value matters: treating "99 of 100 pieces done" as empty would understate real
- * progress, and treating it as done would overstate it. A half-built sandwich is the honest
- * answer, and it happens to be exactly what a piece in flight looks like.
- */
-function bucketPieces(done, capacity) {
-  if (done.length <= capacity) return done.map((complete) => (complete ? 1 : 0));
-  const size = Math.ceil(done.length / capacity);
-  const buckets = [];
-  for (let start = 0; start < done.length; start += size) {
-    const slice = done.slice(start, start + size);
-    const complete = slice.filter(Boolean).length;
-    buckets.push(complete === 0 ? 0 : complete === slice.length ? 1 : 0.5);
-  }
-  return buckets;
 }
 
 // The cell count depends on how wide the bar actually is, which a window-resize listener does
@@ -139,17 +113,6 @@ const stackObserver = typeof ResizeObserver === "function"
     })
   : null;
 
-/** Even cells filled from byte progress, with the boundary cell shown as partly built. */
-function proportionalCells(capacity, percent) {
-  const exact = (percent / 100) * capacity;
-  const full = Math.floor(exact);
-  return Array.from({ length: capacity }, (_, index) => {
-    if (index < full) return 1;
-    if (index === full && exact - full > 0.15) return 0.5;
-    return 0;
-  });
-}
-
 function renderStack(container, item) {
   stackOwners.set(container, item);
   if (stackObserver) stackObserver.observe(container);
@@ -162,34 +125,26 @@ function renderStack(container, item) {
   const width = container.clientWidth;
   const capacity = cellCapacity(width || PROVISIONAL_WIDTH_PX);
   if (!width) requestAnimationFrame(() => renderStack(container, item));
-  const decoded = decodePieces(item.bitfield, item.num_pieces);
 
-  // The piece map is only worth drawing when it is finer than the bar. A file of one or eight
-  // pieces would otherwise stretch into a handful of enormous blocks, which looks broken and
-  // says nothing extra: at that granularity, byte progress carries the same information.
-  const cells = decoded.length >= capacity
-    ? bucketPieces(decoded, capacity)
-    : proportionalCells(capacity, progressPercent(item.completed_bytes, item.total_bytes));
+  const { full, partial } = orderedCells(capacity, item.completed_bytes, item.total_bytes);
 
-  if (container.childElementCount !== cells.length) {
-    container.replaceChildren(...cells.map(() => {
+  if (container.childElementCount !== capacity) {
+    container.replaceChildren(...Array.from({ length: capacity }, (_, index) => {
       const cell = document.createElement("span");
-      cell.className = "piece";
+      // The filling is a property of the position, not the progress: cell 3 is always the
+      // tomato one, so a growing bar assembles the same deli counter every time.
+      cell.className = `piece f${index % FILLING_COUNT}`;
       return cell;
     }));
   }
 
-  const partial = cells.some((value) => value === 0.5);
   container.childNodes.forEach((cell, index) => {
-    const value = cells[index];
-    cell.classList.toggle("is-done", value === 1);
-    cell.classList.toggle("is-partial", value === 0.5);
-    // Partly-filled cells are genuinely where work is happening, so those are what pulse.
-    // With few enough pieces that no cell aggregates, fall back to the first incomplete cell,
-    // which is an approximation and marked as such.
-    const live = item.status === "active"
-      && (partial ? value === 0.5 : value === 0 && (index === 0 || cells[index - 1] === 1));
-    cell.classList.toggle("is-active", live);
+    const frontier = index === full && full < capacity;
+    cell.classList.toggle("is-done", index < full);
+    // Only claim a partly-built sandwich once there is visibly something on the bun.
+    cell.classList.toggle("is-partial", frontier && partial > 0.15);
+    // The frontier cell is where bytes are actually landing right now, so it is what pulses.
+    cell.classList.toggle("is-active", item.status === "active" && frontier);
   });
 }
 

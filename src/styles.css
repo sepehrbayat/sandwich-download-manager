@@ -459,15 +459,62 @@ button[disabled] { opacity: 0.5; cursor: default; }
   transition: background 160ms ease;
 }
 
-/* A finished piece is a complete sandwich: toasted bun, lettuce, patty, bun. */
+/* A finished piece is a complete sandwich: toasted bun, filling, bottom bun. What sits
+ * between the buns varies down a fixed assembly order (f0..f5 by position), so a filling
+ * row reads as a deli counter being stocked: classic burger, cheese, tomato, lettuce,
+ * pickles, chicken — then again. Filling colors are literal food colors, deliberately not
+ * theme tokens: mortadella does not change hue with the tablecloth. */
 .piece.is-done {
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.18) inset;
+}
+
+.piece.is-done.f0 { /* the classic: lettuce over a thick patty */
   background:
     linear-gradient(180deg,
       var(--crust) 0 30%,
       var(--lettuce) 30% 44%,
       var(--patty) 44% 72%,
       var(--crust-deep) 72% 100%);
-  box-shadow: 0 1px 0 rgb(255 255 255 / 0.18) inset;
+}
+.piece.is-done.f1 { /* cheeseburger: a melt of cheddar on the patty */
+  background:
+    linear-gradient(180deg,
+      var(--crust) 0 30%,
+      #e7b53c 30% 46%,
+      var(--patty) 46% 72%,
+      var(--crust-deep) 72% 100%);
+}
+.piece.is-done.f2 { /* tomato on lettuce */
+  background:
+    linear-gradient(180deg,
+      var(--crust) 0 30%,
+      var(--tomato) 30% 52%,
+      var(--lettuce) 52% 72%,
+      var(--crust-deep) 72% 100%);
+}
+.piece.is-done.f3 { /* the green one: double lettuce */
+  background:
+    linear-gradient(180deg,
+      var(--crust) 0 30%,
+      var(--lettuce) 30% 72%,
+      var(--crust-deep) 72% 100%);
+}
+.piece.is-done.f4 { /* pickles: two slices on a buttered bun */
+  background:
+    radial-gradient(circle at 30% 51%, #7fae5a 24%, transparent 26%),
+    radial-gradient(circle at 70% 51%, #7fae5a 24%, transparent 26%),
+    linear-gradient(180deg,
+      var(--crust) 0 30%,
+      #e9d6ae 30% 72%,
+      var(--crust-deep) 72% 100%);
+}
+.piece.is-done.f5 { /* grilled chicken */
+  background:
+    linear-gradient(180deg,
+      var(--crust) 0 30%,
+      #edd9b2 30% 50%,
+      #d9b98a 50% 72%,
+      var(--crust-deep) 72% 100%);
 }
 
 /* Partly assembled: some of the pieces behind this cell have landed, not all of them. */
