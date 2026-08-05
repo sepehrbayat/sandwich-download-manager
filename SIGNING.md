@@ -1,4 +1,43 @@
-# Code signing
+# Signing
+
+Two unrelated kinds of signing meet in this project. Do not confuse them:
+
+1. **Updater signing (active today, required).** Every release artifact carries a minisign
+   signature that installed copies verify before applying an update. Without it the updater
+   refuses the artifact. This is what stops a compromised download path from shipping a
+   malicious "update" to every user.
+2. **Authenticode / SmartScreen signing (not yet active).** The Windows certificate story
+   below — what removes the "Windows protected your PC" warning on first install.
+
+## Updater signing
+
+The private key lives at `~/.tauri/sandwich-updater.key` on the release machine and **must
+never enter the repository**. The matching public key is baked into
+`apps/desktop/tauri.conf.json` (`plugins.updater.pubkey`).
+
+**Back the private key up somewhere safe.** Losing it means every installed copy rejects all
+future updates — they verify against the public key they shipped with — and the only recovery
+is asking users to reinstall by hand. Rotating the key has the same cost; treat it as
+permanent.
+
+Release builds must sign their updater artifacts:
+
+```
+$env:TAURI_SIGNING_PRIVATE_KEY_PATH = "$env:USERPROFILE\.tauri\sandwich-updater.key"
+npx @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json
+```
+
+Then author the manifest and upload it with the release:
+
+```
+powershell -ExecutionPolicy Bypass -File tools/make-latest-json.ps1 -Version <x.y.z>
+```
+
+**Every release must include a `latest.json` asset.** Installed apps poll
+`releases/latest/download/latest.json`; a release published without it makes every older
+install's update check fail until the next correct release.
+
+# Code signing (Authenticode)
 
 Sandwich releases are currently **unsigned**. Windows SmartScreen shows *"Windows protected
 your PC"* on first run, and users have to choose **More info → Run anyway**.

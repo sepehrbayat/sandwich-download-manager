@@ -784,6 +784,45 @@ bridge.listen("download-snapshot", ({ payload }) => {
   mergeDownload(payload, announcement);
 });
 
+/* ── Updates ────────────────────────────────────────────────────────────── */
+
+// Checked shortly after startup and every few hours while running: a download manager stays
+// open for days, so "on launch" alone would miss most of the fleet. A failed background
+// check is logged, never surfaced — nagging about a flaky network to someone who didn't ask
+// anything teaches them to dismiss real messages.
+const UPDATE_RECHECK_MS = 4 * 60 * 60 * 1000;
+let updateOffered = "";
+
+async function offerUpdateIfAvailable() {
+  let update = null;
+  try {
+    update = await bridge.invoke("check_for_update");
+  } catch (error) {
+    console.warn("update check failed:", error);
+    return;
+  }
+  if (!update || update.version === updateOffered) return;
+  updateOffered = update.version;
+  toast(`Sandwich ${update.version} is available`, {
+    tone: "info",
+    sticky: true,
+    actions: [{
+      label: "Update now",
+      onClick: async () => {
+        toast("Downloading the update — Sandwich will restart itself when it is ready.", { tone: "info", sticky: true });
+        try {
+          await bridge.invoke("install_update");
+        } catch (error) {
+          toast(`The update could not be installed: ${error.message ?? error}`, { tone: "error" });
+        }
+      }
+    }]
+  });
+}
+
+setTimeout(offerUpdateIfAvailable, 15_000);
+setInterval(offerUpdateIfAvailable, UPDATE_RECHECK_MS);
+
 bridge.listen("download-completed", ({ payload }) => {
   toast(`${payload.filename} finished downloading`, {
     tone: "success",

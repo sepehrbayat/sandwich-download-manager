@@ -22,8 +22,20 @@
     },
     "withGlobalTauri": true
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJCN0E5QjczRkQ5ODZDRDkKUldUWmJKajljNXQ2SytaQVVsR3A1eUMzc2ZaQzVwQWpFeFRSbkc4c0ZNN0FXM0ZqM3dkOC9PeFgK",
+      "endpoints": [
+        "https://github.com/sepehrbayat/sandwich-download-manager/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": [
       "msi",
       "nsis"

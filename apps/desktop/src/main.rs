@@ -353,6 +353,56 @@ async fn completed_path(engine: &Aria2, id: &str) -> Result<PathBuf, String> {
         .ok_or_else(|| "download has no output file".to_owned())
 }
 
+/// What the UI needs to offer an update: the number to show and the notes to summarize.
+#[derive(Clone, Serialize)]
+struct UpdateInfo {
+    version: String,
+    notes: Option<String>,
+}
+
+/// Asks the release endpoint whether a newer signed build exists. Errors are returned, not
+/// swallowed — the caller decides whether a failed background check is worth mentioning
+/// (at startup it is not; a user-invoked check would be).
+#[tauri::command]
+async fn check_for_update(app: AppHandle) -> Result<Option<UpdateInfo>, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let updater = app.updater().map_err(|error| error.to_string())?;
+    let found = updater.check().await.map_err(|error| error.to_string())?;
+    Ok(found.map(|update| UpdateInfo {
+        version: update.version.clone(),
+        notes: update.body.clone(),
+    }))
+}
+
+/// Downloads, verifies and installs the update, then restarts into the new version.
+/// Re-checks rather than caching the earlier result: the moment between "offered" and
+/// "accepted" can span hours, and installing a stale artifact would be worse than a
+/// second network round trip.
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let updater = app.updater().map_err(|error| error.to_string())?;
+    let Some(update) = updater.check().await.map_err(|error| error.to_string())? else {
+        return Err("no update is available any more".into());
+    };
+    let progress = app.clone();
+    update
+        .download_and_install(
+            move |chunk, total| {
+                let _ = progress.emit(
+                    "update-progress",
+                    serde_json::json!({ "chunk": chunk, "total": total }),
+                );
+            },
+            || {},
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    // The engine dies with us (job object), the session file preserves the queue, and the
+    // new version restores it — restarting mid-download is safe by construction.
+    app.restart();
+}
+
 /// Stable sentinel the UI matches on to show its "file was moved or deleted" dialog.
 /// The engine still lists the download, but the file system has moved on: users move and
 /// delete finished files, and without this check "open" errored cryptically while "reveal"
@@ -494,6 +544,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let handle = app.handle().clone();
             let data_dir = app
@@ -569,7 +620,9 @@ fn main() {
             save_settings,
             control_download,
             open_completed_file,
-            reveal_completed_file
+            reveal_completed_file,
+            check_for_update,
+            install_update
         ])
         .build(tauri::generate_context!())
         .expect("failed to run Sandwich Download Manager")
