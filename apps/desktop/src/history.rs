@@ -88,8 +88,12 @@ impl HistoryStore {
 mod tests {
     use super::*;
 
-    fn scratch() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("sandwich-history-{}", std::process::id()));
+    /// One directory per test, not per process: cargo runs tests on parallel threads, and a
+    /// shared directory that each test wipes on entry is a race the local machine happened
+    /// to win and CI happened to lose.
+    fn scratch(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("sandwich-history-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -97,7 +101,7 @@ mod tests {
 
     #[test]
     fn round_trips_through_disk() {
-        let dir = scratch();
+        let dir = scratch("roundtrip");
         let mut store = HistoryStore::load(&dir);
         store.record_added("g1");
         store.record_completed("g1");
@@ -110,7 +114,7 @@ mod tests {
 
     #[test]
     fn timestamps_are_first_write_wins() {
-        let dir = scratch();
+        let dir = scratch("firstwrite");
         let mut store = HistoryStore::load(&dir);
         store.record_added("g1");
         let first = store.get("g1").added_at;
@@ -120,7 +124,7 @@ mod tests {
 
     #[test]
     fn a_corrupt_file_is_an_empty_store() {
-        let dir = scratch();
+        let dir = scratch("corrupt");
         std::fs::write(dir.join("history.json"), "{ not json").unwrap();
         let store = HistoryStore::load(&dir);
         assert!(store.get("anything").added_at.is_none());
@@ -128,7 +132,7 @@ mod tests {
 
     #[test]
     fn prune_keeps_only_live_gids() {
-        let dir = scratch();
+        let dir = scratch("prune");
         let mut store = HistoryStore::load(&dir);
         store.record_added("keep");
         store.record_added("drop");
