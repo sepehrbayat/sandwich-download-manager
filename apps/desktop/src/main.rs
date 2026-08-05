@@ -582,8 +582,8 @@ fn main() {
                 let state = app_handle.state::<AppState>();
                 if let Some(engine) = state.engine.clone() {
                     tauri::async_runtime::block_on(async move {
-                        let _ = tokio::time::timeout(Duration::from_secs(3), engine.shutdown())
-                            .await;
+                        let _ =
+                            tokio::time::timeout(Duration::from_secs(3), engine.shutdown()).await;
                     });
                 }
             }
