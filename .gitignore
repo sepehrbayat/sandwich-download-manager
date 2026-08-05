@@ -28,3 +28,6 @@ DEVELOPMENT.md
 # Playwright output
 test-results/
 playwright-report/
+
+# Staged into the bundle by the build; the source of truth is packages/browser-host
+apps/desktop/binaries/sandwich-browser-host.exe

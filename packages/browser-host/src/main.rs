@@ -73,9 +73,19 @@ fn read_handoff() -> Option<Handoff> {
 }
 
 /// Reads one native-messaging frame. Returns None on a clean end of stream.
-fn read_frame(input: &mut impl Read) -> Option<Vec<u8>> {
+///
+/// `first` is true for the first frame on the stream: some hosts prepend a UTF-8 byte order
+/// mark to a child's stdin (Windows PowerShell 5.1 does, via .NET Framework), and read as a
+/// length prefix those three bytes turn the real header into a gigabyte-sized nonsense frame.
+/// Browsers never send one, but a host this small costs nothing to make scriptable.
+fn read_frame(input: &mut impl Read, first: bool) -> Option<Vec<u8>> {
     let mut header = [0u8; 4];
     input.read_exact(&mut header).ok()?;
+    if first && header[..3] == [0xEF, 0xBB, 0xBF] {
+        let mut rest = [0u8; 3];
+        input.read_exact(&mut rest).ok()?;
+        header = [header[3], rest[0], rest[1], rest[2]];
+    }
     let length = u32::from_le_bytes(header) as usize;
     // Browsers cap outgoing messages at 1 MB; anything larger is not from a browser.
     if length == 0 || length > 1024 * 1024 {
@@ -166,7 +176,8 @@ fn main() {
     let mut input = std::io::stdin().lock();
     let mut output = std::io::stdout().lock();
 
-    while let Some(frame) = read_frame(&mut input) {
+    let mut first = true;
+    while let Some(frame) = read_frame(&mut input, std::mem::take(&mut first)) {
         let response = match serde_json::from_slice::<Request>(&frame) {
             Err(error) => Response::failed(format!("malformed request: {error}")),
             Ok(request) => match read_handoff() {

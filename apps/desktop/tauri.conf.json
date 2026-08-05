@@ -1,10 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Sandwich Download Manager",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "identifier": "dev.sandwich.download-manager",
   "build": {
-    "frontendDist": "../../src"
+    "frontendDist": "../../src",
+    "beforeBuildCommand": "cargo build --release -p sandwich-browser-host"
   },
   "app": {
     "windows": [
@@ -55,7 +56,8 @@
     "resources": [
       "binaries/aria2c.exe",
       "binaries/aria2-COPYING.txt",
-      "binaries/aria2-LICENSE.OpenSSL.txt"
+      "binaries/aria2-LICENSE.OpenSSL.txt",
+      "binaries/sandwich-browser-host.exe"
     ]
   }
 }

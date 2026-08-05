@@ -25,13 +25,16 @@ $hostName = "dev.sandwich.download_manager"
 
 function Resolve-HostBinary {
   if ($HostBinary -and (Test-Path $HostBinary)) { return (Resolve-Path $HostBinary).Path }
+  # Where the installer puts it, then a plain-copy install, then a local build.
+  $installed = Join-Path $env:LOCALAPPDATA "Sandwich Download Manager"
   $candidates = @(
-    "$env:LOCALAPPDATA\Sandwich Download Manager\sandwich-browser-host.exe",
+    (Join-Path $installed "binaries\sandwich-browser-host.exe"),
+    (Join-Path $installed "sandwich-browser-host.exe"),
     (Join-Path $PSScriptRoot "..\target\release\sandwich-browser-host.exe"),
     (Join-Path $PSScriptRoot "..\target\debug\sandwich-browser-host.exe")
   )
   foreach ($c in $candidates) { if (Test-Path $c) { return (Resolve-Path $c).Path } }
-  throw "Could not find sandwich-browser-host.exe. Build it with 'cargo build --workspace' or pass -HostBinary."
+  throw "Could not find sandwich-browser-host.exe. Install Sandwich, build it with 'cargo build --workspace', or pass -HostBinary."
 }
 
 $registryTargets = @(
