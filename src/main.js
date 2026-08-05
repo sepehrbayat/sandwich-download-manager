@@ -51,6 +51,36 @@ const elements = {
   rail: document.querySelectorAll(".rail-item")
 };
 
+/* ── Theme ──────────────────────────────────────────────────────────────── */
+
+const THEMES = ["classic", "rye", "sesame", "pistachio", "toast"];
+let theme = "";
+
+function applyTheme(name, { persist } = {}) {
+  theme = THEMES.includes(name) ? name : "";
+  if (theme) document.documentElement.dataset.theme = theme;
+  else delete document.documentElement.dataset.theme;
+  document.querySelectorAll(".theme-swatch").forEach((swatch) => {
+    swatch.setAttribute("aria-pressed", String(swatch.dataset.themeChoice === theme));
+  });
+  // Settings live in Rust and load asynchronously; this mirror lets the next launch paint
+  // the right canvas before that round trip instead of flashing cream first.
+  try {
+    localStorage.setItem("sandwich-theme", theme);
+  } catch { /* a blocked localStorage costs only the instant first paint */ }
+  if (persist) persistSettings();
+}
+
+// Before first render: the mirror knows the last choice.
+try {
+  const remembered = localStorage.getItem("sandwich-theme");
+  if (remembered) applyTheme(remembered);
+} catch { /* fall through to the OS preference */ }
+
+document.querySelectorAll(".theme-swatch").forEach((swatch) => {
+  swatch.addEventListener("click", () => applyTheme(swatch.dataset.themeChoice, { persist: true }));
+});
+
 let downloads = [];
 let destination = "";
 let clipboardOffer = null;
@@ -624,7 +654,7 @@ let dismissSettingsToast = null;
 async function persistSettings() {
   try {
     await bridge.invoke("save_settings", {
-      settings: { destination, organize_by_type: elements.organize.checked }
+      settings: { destination, organize_by_type: elements.organize.checked, theme }
     });
     // One quiet receipt, replaced rather than stacked when settings change in a burst.
     dismissSettingsToast?.();
@@ -779,6 +809,9 @@ async function restoreSettings() {
       elements.destination.textContent = stored.destination;
     }
     elements.organize.checked = Boolean(stored?.organize_by_type);
+    // The Rust store is the durable truth; the localStorage mirror only bridged the gap
+    // until this load finished.
+    if (stored?.theme) applyTheme(stored.theme);
   } catch {
     // First run, or preferences unavailable: the defaults in the markup already apply.
   }

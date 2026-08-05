@@ -14,6 +14,9 @@ pub struct Settings {
     pub destination: String,
     /// Sort completed files into per-type subfolders.
     pub organize_by_type: bool,
+    /// Canvas theme name. Empty means "never chosen", which lets the UI follow the OS
+    /// light/dark preference until the user picks one; a stored choice always wins.
+    pub theme: String,
 }
 
 fn settings_path(config_dir: &Path) -> PathBuf {
@@ -57,6 +60,7 @@ mod tests {
         let stored = Settings {
             destination: "D:\\Downloads".into(),
             organize_by_type: true,
+            theme: "rye".into(),
         };
         save(&dir, &stored).unwrap();
         let read_back = load(&dir);

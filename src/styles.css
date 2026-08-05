@@ -33,8 +33,14 @@
   font-synthesis: none;
 }
 
+/* ── Themes ────────────────────────────────────────────────────────────────
+ * Five tablecloths, one sandwich: themes recolor only the canvas (backgrounds, ink, lines).
+ * The orange identity and the food colors stay put — on dark canvases they brighten a step
+ * for contrast, but the hue never moves. Every block below must pass tools/check-contrast.py.
+ * No [data-theme] attribute means "never chosen": the OS light/dark preference applies. */
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --bg: #14100c;
     --surface: #1d1712;
     --surface-sunk: #241d16;
@@ -47,6 +53,56 @@
     --tomato: #e0705a;
     --patty: #c0764a;
   }
+}
+
+/* classic — the cream default; the :root values are this theme */
+
+:root[data-theme="rye"] { /* warm charcoal dark: no neon, warm neutrals */
+  --bg: #14100c;
+  --surface: #1d1712;
+  --surface-sunk: #241d16;
+  --ink: #f6efe4;
+  --ink-soft: #b8a692;
+  --line: #2e251c;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 28px rgb(0 0 0 / 0.35);
+  --crust: #f0ae4a;
+  --lettuce: #63b96f;
+  --tomato: #e0705a;
+  --patty: #c0764a;
+}
+
+:root[data-theme="sesame"] { /* cool porcelain: the office-quiet one */
+  --bg: #f4f4f2;
+  --surface: #ffffff;
+  --surface-sunk: #ebebe7;
+  --ink: #1f1f1c;
+  --ink-soft: #54544c;
+  --line: #dededa;
+  --shadow: 0 1px 2px rgb(31 31 28 / 0.06), 0 8px 24px rgb(31 31 28 / 0.06);
+}
+
+:root[data-theme="pistachio"] { /* muted sage */
+  --bg: #f0f4ea;
+  --surface: #fbfdf8;
+  --surface-sunk: #e5ecdc;
+  --ink: #1f2619;
+  --ink-soft: #4c5a42;
+  --line: #d9e2cc;
+  --shadow: 0 1px 2px rgb(31 38 25 / 0.06), 0 8px 24px rgb(31 38 25 / 0.06);
+}
+
+:root[data-theme="toast"] { /* deep amber-brown: the cozy dark */
+  --bg: #1a130b;
+  --surface: #241a10;
+  --surface-sunk: #2c2013;
+  --ink: #f7ecdd;
+  --ink-soft: #c2ab8f;
+  --line: #3a2b18;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 28px rgb(0 0 0 / 0.35);
+  --crust: #f0ae4a;
+  --lettuce: #63b96f;
+  --tomato: #e0705a;
+  --patty: #c0764a;
 }
 
 * { box-sizing: border-box; }
@@ -194,6 +250,32 @@ body {
 .rail-icon { color: var(--ink-soft); text-align: center; }
 .rail-item.is-selected .rail-icon { color: var(--crust-deep); }
 .rail-count { font-size: 11px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+/* Theme swatches: each is its own little canvas with the one constant, the orange dot. */
+.theme-picker { display: flex; gap: 6px; padding: 2px 8px; flex-wrap: wrap; }
+.theme-swatch {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1.5px solid var(--swatch-line);
+  border-radius: var(--radius-sm);
+  background: var(--swatch);
+  position: relative;
+  cursor: pointer;
+}
+.theme-swatch::after {
+  content: "";
+  position: absolute;
+  inset: auto auto 4px 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #e8a33d; /* the brand constant, deliberately not a token */
+}
+.theme-swatch[aria-pressed="true"] {
+  outline: 2px solid var(--crust-deep);
+  outline-offset: 1px;
+}
 
 .content {
   overflow-y: auto;
