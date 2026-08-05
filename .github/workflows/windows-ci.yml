@@ -31,6 +31,13 @@ jobs:
       - name: Formatting
         run: cargo fmt --all --check
 
+      # The desktop crate's build script stages the browser bridge into the bundle resources
+      # and Tauri verifies the resource exists on every compile — including the test build.
+      # Locally the release bridge is always around from earlier builds; a fresh runner has
+      # to create it first, in the same order the real installer build does.
+      - name: Build browser bridge
+        run: cargo build --release -p sandwich-browser-host
+
       - name: Tests
         run: cargo test --workspace
 
