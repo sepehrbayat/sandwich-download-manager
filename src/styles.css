@@ -555,3 +555,87 @@ button[disabled] { opacity: 0.5; cursor: default; }
 
 .download-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .download-actions:empty { display: none; }
+
+
+/* ── Feedback: toasts and modal dialogs ────────────────────────────────── */
+
+.toast-host {
+  position: fixed;
+  right: var(--gap);
+  bottom: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 40;
+  max-width: 360px;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--crust-deep);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 10px 12px;
+  animation: toast-in 150ms ease-out;
+}
+.toast--success { border-left-color: var(--lettuce); }
+.toast--error { border-left-color: var(--tomato); }
+.toast p { margin: 0; flex: 1; font-size: 13px; }
+
+.toast-action {
+  background: none;
+  border: 0;
+  color: var(--crust-deep);
+  font: inherit;
+  font-weight: 700;
+  padding: 2px 4px;
+  white-space: nowrap;
+}
+.toast-action:hover { text-decoration: underline; }
+
+.toast-close {
+  background: none;
+  border: 0;
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+.app-dialog {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  padding: 20px;
+  max-width: 420px;
+}
+.app-dialog::backdrop { background: rgb(42 31 23 / 0.35); }
+.app-dialog h2 { margin: 0 0 8px; font-size: 16px; }
+.app-dialog p { margin: 0 0 16px; color: var(--ink-soft); font-size: 13px; }
+.app-dialog .button-group { justify-content: flex-end; }
+
+/* A committing destructive action gets a button that looks like one. */
+button.danger:not(.quiet) {
+  min-height: 32px;
+  padding: 6px 16px;
+  border: 0;
+  background: var(--tomato);
+  color: #fff;
+  font-weight: 700;
+}
+button.danger:not(.quiet):hover { filter: brightness(1.08); }
+
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
+}

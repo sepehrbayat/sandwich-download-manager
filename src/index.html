@@ -244,6 +244,14 @@
       </li>
     </template>
 
+    <!-- Feedback layer: outcomes land here so no action ends in silence -->
+    <div id="toast-host" class="toast-host"></div>
+    <dialog id="app-dialog" class="app-dialog" aria-labelledby="app-dialog-title">
+      <h2 id="app-dialog-title"></h2>
+      <p id="app-dialog-body"></p>
+      <div id="app-dialog-buttons" class="button-group"></div>
+    </dialog>
+
     <script type="module" src="./main.js"></script>
   </body>
 </html>
