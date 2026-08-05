@@ -20,7 +20,8 @@
   --surface: #ffffff;
   --surface-sunk: #f6efe5;
   --ink: #2a1f17;
-  --ink-soft: #6d5c4d;
+  /* Kept above the 4.5:1 WCAG AA contrast ratio on both surface colors. */
+  --ink-soft: #5d4c3e;
   --line: #ebdfd0;
   --shadow: 0 1px 2px rgb(42 31 23 / 0.06), 0 8px 24px rgb(42 31 23 / 0.06);
 
@@ -38,7 +39,7 @@
     --surface: #1d1712;
     --surface-sunk: #241d16;
     --ink: #f6efe4;
-    --ink-soft: #a99683;
+    --ink-soft: #b8a692;
     --line: #2e251c;
     --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 28px rgb(0 0 0 / 0.35);
     --crust: #f0ae4a;
@@ -128,7 +129,19 @@ body {
 .throughput-value { font-weight: 600; }
 
 .titlebar-actions { display: flex; align-items: center; gap: 12px; }
-.connection { margin: 0; font-size: 12px; color: var(--ink-soft); }
+
+/* Outage banner: full-width and loud, because when it shows, nothing below it works. */
+.engine-banner {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  background: color-mix(in oklab, var(--tomato) 14%, var(--surface));
+  border-bottom: 1px solid color-mix(in oklab, var(--tomato) 40%, var(--line));
+  color: var(--ink);
+  font-size: 13px;
+  flex: none;
+}
 
 /* ── Shell ─────────────────────────────────────────────────────────────── */
 
@@ -202,11 +215,15 @@ body {
 
 .section-heading {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  /* Wrap the whole toolbar under the title rather than squeezing the title into a
+     two-line stub — at the default window width the toolbar is the wider party. */
+  flex-wrap: wrap;
+  gap: 8px 12px;
   margin-bottom: 12px;
 }
+.section-heading h2 { flex: none; }
 .eyebrow {
   margin: 0;
   font-size: 10.5px;
@@ -216,7 +233,20 @@ body {
   color: var(--crust-deep);
 }
 h2 { margin: 2px 0 0; font-size: 17px; letter-spacing: -0.01em; }
-.toolbar { display: flex; gap: 8px; }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+.search, .sort {
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.search { width: 170px; }
+.search:focus, .sort:focus { border-color: var(--crust); outline: none; }
 
 label, .field-label { font-weight: 600; font-size: 12.5px; }
 .url-row { display: flex; gap: 8px; margin-top: 6px; }
@@ -322,6 +352,8 @@ button[disabled] { opacity: 0.5; cursor: default; }
 .download-card {
   padding: 13px 14px;
   border: 1px solid var(--line);
+  /* The strip is state you can read from across the room, before any text. */
+  border-inline-start: 3px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
   display: grid;
@@ -329,8 +361,27 @@ button[disabled] { opacity: 0.5; cursor: default; }
   transition: border-color 120ms ease;
 }
 .download-card:hover { border-color: color-mix(in oklab, var(--crust) 45%, var(--line)); }
-.download-card[data-status="failed"] { border-color: color-mix(in oklab, var(--tomato) 45%, var(--line)); }
-.download-card[data-status="completed"] { border-color: color-mix(in oklab, var(--lettuce) 35%, var(--line)); }
+.download-card[data-status="active"],
+.download-card[data-status="queued"] { border-inline-start-color: var(--crust); }
+.download-card[data-status="paused"],
+.download-card[data-status="recoverably_interrupted"] { border-inline-start-color: var(--ink-soft); }
+.download-card[data-status="failed"] {
+  border-color: color-mix(in oklab, var(--tomato) 45%, var(--line));
+  border-inline-start-color: var(--tomato);
+}
+.download-card[data-status="cancelled"] { border-inline-start-color: var(--ink-soft); }
+.download-card[data-status="completed"] {
+  border-color: color-mix(in oklab, var(--lettuce) 35%, var(--line));
+  border-inline-start-color: var(--lettuce);
+}
+
+/* A dead transfer collapses to what matters: which file, from where, what went wrong, and
+ * what to do next. An empty progress bar reads as skeleton loading, and a row of "—"
+ * metrics is noise — seven failed cards of that buried the two live downloads. */
+.download-card[data-status="failed"] .stack,
+.download-card[data-status="cancelled"] .stack,
+.download-card[data-status="failed"] .metrics,
+.download-card[data-status="cancelled"] .metrics { display: none; }
 
 .card-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .file-identity { display: flex; gap: 11px; min-width: 0; }
@@ -355,7 +406,25 @@ button[disabled] { opacity: 0.5; cursor: default; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.download-state { margin: 1px 0 0; font-size: 12px; color: var(--ink-soft); }
+.download-meta {
+  margin: 1px 0 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+}
+.download-state { flex: none; font-weight: 600; }
+.download-card[data-status="active"] .download-state { color: var(--crust-deep); }
+.download-card[data-status="failed"] .download-state { color: var(--tomato); }
+.download-card[data-status="completed"] .download-state { color: var(--lettuce); }
+.download-source {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.download-source::before { content: "·"; margin-inline-end: 6px; }
 
 .headline-metrics { display: flex; align-items: center; gap: 10px; flex: none; }
 .percent { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -384,9 +453,9 @@ button[disabled] { opacity: 0.5; cursor: default; }
   border-radius: 4px 4px 3px 3px;
   background:
     linear-gradient(180deg,
-      color-mix(in oklab, var(--ink) 10%, transparent) 0 34%,
-      color-mix(in oklab, var(--ink) 6%, transparent) 34% 66%,
-      color-mix(in oklab, var(--ink) 10%, transparent) 66% 100%);
+      color-mix(in oklab, var(--ink) 16%, transparent) 0 34%,
+      color-mix(in oklab, var(--ink) 10%, transparent) 34% 66%,
+      color-mix(in oklab, var(--ink) 16%, transparent) 66% 100%);
   transition: background 160ms ease;
 }
 
@@ -462,15 +531,16 @@ button[disabled] { opacity: 0.5; cursor: default; }
 .metric-label { color: var(--ink-soft); }
 .metric { color: var(--ink); font-weight: 600; }
 
+/* What happened, why, and what to do next — in that order, in our words. */
 .download-error {
   margin: 0;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
   background: color-mix(in oklab, var(--tomato) 12%, transparent);
-  color: var(--tomato);
   font-size: 12.5px;
-  font-weight: 600;
 }
+.error-headline { margin: 0; color: var(--tomato); font-weight: 700; }
+.error-hint { margin: 2px 0 0; color: var(--ink); }
 
 .details { padding: 10px 12px; background: var(--surface-sunk); border-radius: var(--radius-sm); }
 .detail-grid { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 18px; }

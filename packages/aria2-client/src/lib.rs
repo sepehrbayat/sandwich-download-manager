@@ -44,6 +44,11 @@ pub struct Aria2Status {
     pub completed_length: String,
     #[serde(default)]
     pub download_speed: String,
+    /// aria2's numeric exit code for the transfer, as a string ("3" = not found, "9" = disk
+    /// full, "24" = authorization failed…). The message alone is not enough for the UI to
+    /// explain failures in words a person can act on.
+    #[serde(default)]
+    pub error_code: Option<String>,
     #[serde(default)]
     pub error_message: Option<String>,
     #[serde(default)]

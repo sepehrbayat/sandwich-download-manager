@@ -74,7 +74,7 @@ pull requests continue to build unsigned rather than failing on a secret they ca
 ## Verifying a signed build
 
 ```
-signtool verify /pa /v "Sandwich Download Manager_0.1.1_x64-setup.exe"
+signtool verify /pa /v "Sandwich Download Manager_0.2.0_x64-setup.exe"
 ```
 
 Check that it reports a valid chain **and** a timestamp. A signature without a timestamp will

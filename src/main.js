@@ -1,4 +1,4 @@
-import { formatBytes, formatEta, progressPercent, statusLabels } from "./formatters.js";
+import { describeError, formatBytes, formatEta, progressPercent, sourceHost, statusLabels } from "./formatters.js";
 
 const invoke = window.__TAURI__?.core?.invoke ?? window.__TAURI_INTERNALS__?.invoke;
 const listen = window.__TAURI__?.event?.listen;
@@ -31,12 +31,15 @@ const elements = {
   empty: document.querySelector("#empty-state"),
   template: document.querySelector("#download-template"),
   queueStatus: document.querySelector("#queue-status"),
-  queueScope: document.querySelector("#queue-scope"),
-  connection: document.querySelector("#connection-status"),
+  queueTitle: document.querySelector("#downloads-title"),
+  engineBanner: document.querySelector("#engine-banner"),
   throughput: document.querySelector("#throughput-value"),
-  refresh: document.querySelector("#refresh"),
+  search: document.querySelector("#queue-search"),
+  sort: document.querySelector("#queue-sort"),
   pauseAll: document.querySelector("#pause-all"),
   resumeAll: document.querySelector("#resume-all"),
+  retryFailed: document.querySelector("#retry-failed"),
+  clearFailed: document.querySelector("#clear-failed"),
   offer: document.querySelector("#clipboard-offer"),
   offerUrl: document.querySelector("#clipboard-url"),
   confirmOffer: document.querySelector("#confirm-offer"),
@@ -48,6 +51,8 @@ let downloads = [];
 let destination = "";
 let clipboardOffer = null;
 let filter = "all";
+let searchQuery = "";
+let sortMode = "status";
 const cards = new Map();
 const expanded = new Set();
 // Disabling a focused button blurs it immediately, so by the time a re-render runs the browser
@@ -194,6 +199,9 @@ function actionsFor(status) {
   if (["queued", "active"].includes(status)) return [["Pause", "pause"], ["Cancel", "cancel"]];
   if (["paused", "recoverably_interrupted"].includes(status)) return [["Resume", "resume"], ["Cancel", "cancel"]];
   if (status === "completed") return [["Open file", "open"], ["Show in folder", "reveal"]];
+  // Recovery belongs on the thing that failed. Sending the user to a queue-wide control for
+  // a single broken download is a scavenger hunt.
+  if (["failed", "cancelled"].includes(status)) return [["Retry", "retry"], ["Remove", "cancel"]];
   return [];
 }
 
@@ -209,8 +217,17 @@ function actionButton(label, action, item) {
     try {
       if (action === "open") await bridge.invoke("open_completed_file", { downloadId: item.id });
       else if (action === "reveal") await bridge.invoke("reveal_completed_file", { downloadId: item.id });
-      else {
+      else if (action === "cancel" && ["failed", "cancelled"].includes(item.status)) {
+        // On a dead transfer this button reads "Remove": the user is clearing the entry,
+        // so take it off the list now rather than leaving a card that waits for a poll.
+        await bridge.invoke("control_download", { downloadId: item.id, action });
+        downloads = downloads.filter((entry) => entry.id !== item.id);
+        render();
+        elements.queueStatus.textContent = `${item.filename} removed from the list.`;
+      } else {
         const updated = await bridge.invoke("control_download", { downloadId: item.id, action });
+        // A retry is a new transfer with a new id; the failed original it replaces goes away.
+        if (updated.id !== item.id) downloads = downloads.filter((entry) => entry.id !== item.id);
         mergeDownload(updated, `${item.filename}: ${statusLabels[updated.status] ?? updated.status}`);
       }
     } catch (error) {
@@ -229,6 +246,7 @@ function createCard(item) {
     kind: card.querySelector(".file-kind"),
     filename: card.querySelector(".filename"),
     state: card.querySelector(".download-state"),
+    source: card.querySelector(".download-source"),
     percent: card.querySelector(".percent"),
     disclosure: card.querySelector(".disclosure"),
     stack: card.querySelector(".stack"),
@@ -238,11 +256,15 @@ function createCard(item) {
     eta: card.querySelector(".eta"),
     conns: card.querySelector(".conns"),
     error: card.querySelector(".download-error"),
+    errorHeadline: card.querySelector(".error-headline"),
+    errorHint: card.querySelector(".error-hint"),
     details: card.querySelector(".details"),
     detailUrl: card.querySelector(".detail-url"),
     detailDir: card.querySelector(".detail-dir"),
     detailPieces: card.querySelector(".detail-pieces"),
     detailResume: card.querySelector(".detail-resume"),
+    detailRawRow: card.querySelector(".detail-raw-row"),
+    detailRaw: card.querySelector(".detail-raw"),
     actions: card.querySelector(".download-actions"),
     actionsKey: null
   };
@@ -258,14 +280,26 @@ function updateCard(entry, item) {
   const percent = progressPercent(item.completed_bytes, item.total_bytes);
   const label = statusLabels[item.status] ?? item.status;
   const rounded = Math.round(percent);
+  const dead = ["failed", "cancelled"].includes(item.status);
 
   entry.kind.textContent = kindGlyph(kindOf(item.filename));
   entry.filename.textContent = item.filename;
+  entry.filename.title = item.filename;
   entry.state.textContent = label;
+  // Provenance beside the state: three cards all named "download" are indistinguishable
+  // without it, and for an executable the origin is a safety fact.
+  const host = sourceHost(item.source_url);
+  entry.source.textContent = host;
+  entry.source.hidden = !host;
+  if (host) entry.source.title = item.source_url;
+
   // Some servers never send a length. Claiming "0% of 0 B" is worse than admitting we
   // do not know: the transfer is running fine, the size simply is not knowable yet.
   const sizeKnown = item.total_bytes > 0;
-  entry.percent.textContent = sizeKnown ? `${rounded}%` : "—";
+  // A dead transfer has no meaningful percentage; a lone "—" in its corner reads as a
+  // mystery control, so show nothing at all.
+  entry.percent.hidden = dead;
+  entry.percent.textContent = dead ? "" : sizeKnown ? `${rounded}%` : "—";
   entry.size.textContent = sizeKnown
     ? `${formatBytes(item.completed_bytes)} of ${formatBytes(item.total_bytes)}`
     : `${formatBytes(item.completed_bytes)} so far`;
@@ -274,8 +308,19 @@ function updateCard(entry, item) {
     : "—";
   entry.eta.textContent = item.status === "active" ? formatEta(item.eta_seconds) : "—";
   entry.conns.textContent = item.status === "active" ? String(item.connections || 0) : "—";
-  entry.error.textContent = item.error?.message ?? "";
-  entry.error.hidden = !item.error?.message;
+  // A metric whose value is "—" is noise, not information: hide the pair, not just the value.
+  for (const metric of [entry.speed, entry.eta, entry.conns]) {
+    metric.closest(".metric").hidden = metric.textContent === "—";
+  }
+
+  if (item.error?.message) {
+    const { headline, hint } = describeError(item.error);
+    entry.errorHeadline.textContent = headline;
+    entry.errorHint.textContent = hint;
+    entry.error.hidden = false;
+  } else {
+    entry.error.hidden = true;
+  }
   entry.card.dataset.status = item.status;
 
   entry.stack.setAttribute(
@@ -296,6 +341,8 @@ function updateCard(entry, item) {
       ? `${item.num_pieces} × ${formatBytes(Math.round(item.total_bytes / item.num_pieces))}`
       : "—";
     entry.detailResume.textContent = item.num_pieces > 1 ? "Supported" : "Not reported";
+    entry.detailRawRow.hidden = !item.error?.message;
+    entry.detailRaw.textContent = item.error?.message ?? "";
   }
 
   // Replacing the buttons destroys keyboard focus, so only do it when the actions change.
@@ -322,17 +369,43 @@ function matchesFilter(item, active) {
   return true;
 }
 
+function matchesSearch(item) {
+  if (!searchQuery) return true;
+  const haystack = `${item.filename} ${item.source_url ?? ""}`.toLowerCase();
+  return haystack.includes(searchQuery);
+}
+
 function updateCounts() {
   const counts = { all: downloads.length };
   for (const name of ["active", "paused", "completed", "failed"]) {
     counts[name] = downloads.filter((item) => matchesFilter(item, name)).length;
   }
-  for (const kind of Object.keys(KINDS)) {
+  // "other" included: every download must be reachable through some type filter, or the
+  // sidebar's arithmetic quietly stops adding up to the total.
+  for (const kind of [...Object.keys(KINDS), "other"]) {
     counts[`type:${kind}`] = downloads.filter((item) => kindOf(item.filename) === kind).length;
   }
   document.querySelectorAll("[data-count]").forEach((node) => {
     node.textContent = String(counts[node.dataset.count] ?? 0);
   });
+}
+
+// What the user most needs to see comes first: work in motion, then things they could act
+// on, then failures needing a decision, then history.
+const STATUS_ORDER = {
+  active: 0, queued: 1, paused: 2, recoverably_interrupted: 2, failed: 3, cancelled: 4, completed: 5
+};
+
+function orderDownloads(items) {
+  const ranked = items.map((item, index) => ({ item, index }));
+  const by = {
+    status: (a, b) => (STATUS_ORDER[a.item.status] ?? 9) - (STATUS_ORDER[b.item.status] ?? 9),
+    name: (a, b) => a.item.filename.localeCompare(b.item.filename, undefined, { sensitivity: "base" }),
+    size: (a, b) => (b.item.total_bytes || 0) - (a.item.total_bytes || 0)
+  }[sortMode] ?? (() => 0);
+  // Stable within equal keys, so cards do not shuffle as progress events arrive.
+  ranked.sort((a, b) => by(a, b) || a.index - b.index);
+  return ranked.map(({ item }) => item);
 }
 
 function updateThroughput() {
@@ -345,7 +418,9 @@ function updateThroughput() {
 // Reconciles by download id and mutates cards in place. A full rebuild would destroy the
 // button a keyboard user is standing on every time a progress event arrives.
 function render() {
-  const visible = downloads.filter((item) => matchesFilter(item, filter));
+  const visible = orderDownloads(
+    downloads.filter((item) => matchesFilter(item, filter) && matchesSearch(item))
+  );
   const keep = new Set(visible.map((item) => item.id));
 
   for (const [id, entry] of cards) {
@@ -371,6 +446,11 @@ function render() {
   elements.empty.hidden = visible.length > 0;
   updateCounts();
   updateThroughput();
+
+  // Bulk failure controls only exist while there is a failure to act on.
+  const failed = downloads.filter((item) => item.status === "failed");
+  elements.retryFailed.hidden = failed.length === 0;
+  elements.clearFailed.hidden = failed.length === 0;
 }
 
 function mergeDownload(snapshot, announcement) {
@@ -383,11 +463,11 @@ function mergeDownload(snapshot, announcement) {
 async function refresh() {
   try {
     downloads = await bridge.invoke("list_downloads");
-    elements.connection.textContent = "Engine connected";
+    // Connectivity is only news when it is bad. A permanent "connected" badge is plumbing.
+    elements.engineBanner.hidden = true;
     render();
-  } catch (error) {
-    elements.connection.textContent = "Engine unavailable";
-    showError(error.message ?? String(error));
+  } catch {
+    elements.engineBanner.hidden = false;
   }
 }
 
@@ -408,7 +488,7 @@ elements.rail.forEach((button) => {
       if (selected) other.setAttribute("aria-current", "true");
       else other.removeAttribute("aria-current");
     });
-    elements.queueScope.textContent = button.querySelector(".rail-label").textContent;
+    elements.queueTitle.textContent = button.querySelector(".rail-label").textContent;
     render();
   });
 });
@@ -490,7 +570,30 @@ async function forEachVisible(action) {
 
 elements.pauseAll.addEventListener("click", () => forEachVisible("pause"));
 elements.resumeAll.addEventListener("click", () => forEachVisible("resume"));
-elements.refresh.addEventListener("click", refresh);
+
+// Bulk recovery for failures: retry re-queues each one; clear removes them from the list.
+async function forEachFailed(action, announcement) {
+  for (const item of downloads.filter((entry) => entry.status === "failed")) {
+    try {
+      const updated = await bridge.invoke("control_download", { downloadId: item.id, action });
+      downloads = downloads.filter((entry) => entry.id !== item.id);
+      if (action === "retry") downloads.unshift(updated);
+    } catch { /* one failure must not stop the rest */ }
+  }
+  render();
+  elements.queueStatus.textContent = announcement;
+}
+elements.retryFailed.addEventListener("click", () => forEachFailed("retry", "Retrying every failed download."));
+elements.clearFailed.addEventListener("click", () => forEachFailed("cancel", "Cleared the failed downloads."));
+
+elements.search.addEventListener("input", () => {
+  searchQuery = elements.search.value.trim().toLowerCase();
+  render();
+});
+elements.sort.addEventListener("change", () => {
+  sortMode = elements.sort.value;
+  render();
+});
 
 elements.dismissOffer.addEventListener("click", () => {
   clipboardOffer = null;
@@ -549,3 +652,13 @@ async function restoreSettings() {
 }
 
 restoreSettings().finally(refresh);
+
+// Snapshot events carry live progress; this slow full re-sync is the safety net that catches
+// anything they miss (a removed transfer, an engine restart) and clears the outage banner.
+// It also replaces the manual Refresh button: a real-time queue asking to be refreshed by
+// hand was an implementation detail showing through the paint.
+setInterval(refresh, 5000);
+
+// Deliberate test hook: the UI suite needs to trigger the exact refresh code path without a
+// user-facing control existing for it.
+window.__sandwichRefresh = refresh;

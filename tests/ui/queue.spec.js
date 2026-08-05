@@ -13,7 +13,7 @@ async function seed(page, downloads) {
     window.__SANDWICH_TEST_BRIDGE__.invoke = async (command, payload) =>
       command === "list_downloads" ? items : original(command, payload);
   }, downloads);
-  await page.click("#refresh");
+  await page.evaluate(() => window.__sandwichRefresh());
   await page.waitForFunction(
     (count) => document.querySelectorAll(".download-card").length === count,
     downloads.length,
@@ -47,9 +47,9 @@ test("keyboard focus survives a progress update", async ({ page }) => {
   await pause.focus();
   const before = await page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
 
-  // A real click would move focus to the Refresh button and measure that instead. Trigger
-  // the same code path programmatically so the only thing that can move focus is the render.
-  await page.evaluate(() => document.querySelector("#refresh").click());
+  // Trigger the refresh code path programmatically so the only thing that can move focus
+  // is the render itself.
+  await page.evaluate(() => window.__sandwichRefresh());
   await page.waitForTimeout(200);
 
   const after = await page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
@@ -133,6 +133,90 @@ test("the interface stays usable at a narrow window", async ({ page }) => {
   );
   expect(overflows).toBe(false);
   await expect(page.locator(".download-card").first()).toBeVisible();
+});
+
+test("a failed download explains itself in words, not transport codes", async ({ page }) => {
+  const failed = page.locator('.download-card[data-status="failed"]').first();
+  // The engine's raw "status=403" line must not reach the card face…
+  await expect(failed.locator(".error-headline")).toContainText("Access denied");
+  await expect(failed.locator(".download-error")).not.toContainText("response status is not successful");
+  // …and the hint says what to do next.
+  await expect(failed.locator(".error-hint")).not.toBeEmpty();
+  // The raw engine text stays reachable for diagnosis under details.
+  await failed.locator(".disclosure").click();
+  await expect(failed.locator(".detail-raw")).toContainText("status=403");
+});
+
+test("a failed card is compact: no skeleton progress bar, no dashed-out metrics", async ({ page }) => {
+  const failed = page.locator('.download-card[data-status="failed"]').first();
+  await expect(failed.locator(".stack")).toBeHidden();
+  await expect(failed.locator(".metrics")).toBeHidden();
+  // Recovery lives on the card itself.
+  await expect(failed.locator("button", { hasText: "Retry" })).toBeVisible();
+});
+
+test("retrying a failed download replaces it with a live transfer", async ({ page }) => {
+  await page.locator('.download-card[data-status="failed"] button', { hasText: "Retry" }).first().click();
+  await expect(page.locator('.download-card[data-status="failed"]')).toHaveCount(0);
+  await expect(page.locator(".download-card")).toHaveCount(4);
+});
+
+test("bulk failure controls appear only while something has failed", async ({ page }) => {
+  await expect(page.locator("#retry-failed")).toBeVisible();
+  await expect(page.locator("#clear-failed")).toBeVisible();
+  await seed(page, [
+    {
+      id: "only", filename: "fine.zip", status: "active",
+      completed_bytes: 10, total_bytes: 100, bytes_per_second: 5,
+      eta_seconds: 18, connections: 1, num_pieces: 1, bitfield: "0",
+      source_url: "https://example.com/fine.zip", directory: "C:\\Downloads",
+    },
+  ]);
+  await expect(page.locator("#retry-failed")).toBeHidden();
+  await expect(page.locator("#clear-failed")).toBeHidden();
+});
+
+test("every card names the domain it downloads from", async ({ page }) => {
+  const sources = page.locator(".download-card .download-source");
+  await expect(sources.first()).toContainText("releases.example.com");
+  // Full URL stays one hover away.
+  await expect(sources.first()).toHaveAttribute("title", /https:\/\//);
+});
+
+test("live transfers sort above failures regardless of arrival order", async ({ page }) => {
+  await seed(page, [
+    {
+      id: "f1", filename: "broken.zip", status: "failed", completed_bytes: 0, total_bytes: 10,
+      bytes_per_second: 0, connections: 0, num_pieces: 1, bitfield: "0",
+      error: { message: "x" }, source_url: "https://a.example.com/broken.zip", directory: "C:\\D",
+    },
+    {
+      id: "a1", filename: "moving.zip", status: "active", completed_bytes: 5, total_bytes: 10,
+      bytes_per_second: 1, eta_seconds: 5, connections: 1, num_pieces: 1, bitfield: "0",
+      source_url: "https://b.example.com/moving.zip", directory: "C:\\D",
+    },
+  ]);
+  await expect(page.locator(".download-card").first()).toHaveAttribute("data-status", "active");
+});
+
+test("search narrows the queue by name and address", async ({ page }) => {
+  await page.fill("#queue-search", "album");
+  await expect(page.locator(".download-card")).toHaveCount(1);
+  await expect(page.locator(".filename").first()).toHaveText("album.flac");
+  await page.fill("#queue-search", "");
+  await expect(page.locator(".download-card")).toHaveCount(4);
+});
+
+test("every download is reachable through some file-type filter", async ({ page }) => {
+  // The sidebar's type arithmetic must add up to the total, or downloads silently
+  // disappear from every filter — the "7 of 10 invisible" bug.
+  const counts = await page.evaluate(() => {
+    const all = Number(document.querySelector('[data-count="all"]').textContent);
+    const types = [...document.querySelectorAll('[data-count^="type:"]')]
+      .reduce((sum, node) => sum + Number(node.textContent), 0);
+    return { all, types };
+  });
+  expect(counts.types).toBe(counts.all);
 });
 
 test("every control carries an accessible name", async ({ page }) => {

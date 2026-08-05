@@ -47,12 +47,18 @@
       </div>
 
       <div class="titlebar-actions">
-        <p class="connection" id="connection-status" role="status">Connecting to the engine…</p>
         <button class="primary" id="open-add" type="button">
           <span aria-hidden="true">+</span> Add download
         </button>
       </div>
     </header>
+
+    <!-- Shown only when the engine cannot be reached. While everything works this says
+         nothing: a permanently green "connected" badge is plumbing, not information. -->
+    <div class="engine-banner" id="engine-banner" role="alert" hidden>
+      <strong>The download engine is not responding.</strong>
+      <span id="engine-banner-detail">Transfers are stopped. Restarting Sandwich usually fixes this.</span>
+    </div>
 
     <div class="shell">
       <!-- Category rail -->
@@ -92,6 +98,9 @@
           </button></li>
           <li><button type="button" class="rail-item" data-filter="type:program">
             <span class="rail-icon" aria-hidden="true">▣</span><span class="rail-label">Programs</span><span class="rail-count" data-count="type:program">0</span>
+          </button></li>
+          <li><button type="button" class="rail-item" data-filter="type:other">
+            <span class="rail-icon" aria-hidden="true">▦</span><span class="rail-label">Other</span><span class="rail-count" data-count="type:other">0</span>
           </button></li>
         </ul>
       </nav>
@@ -144,14 +153,22 @@
 
         <section id="queue" class="queue" aria-labelledby="downloads-title" tabindex="-1">
           <div class="section-heading">
-            <div>
-              <p class="eyebrow" id="queue-scope">All downloads</p>
-              <h2 id="downloads-title">Downloads</h2>
-            </div>
+            <!-- The heading is the active filter: naming the scope once instead of an
+                 eyebrow, a title and a sidebar item all repeating each other. -->
+            <h2 id="downloads-title">All downloads</h2>
             <div class="toolbar" role="toolbar" aria-label="Queue actions">
+              <input id="queue-search" class="search" type="search" placeholder="Search downloads"
+                     aria-label="Search downloads by name or address" />
+              <label class="sr-only" for="queue-sort">Sort downloads</label>
+              <select id="queue-sort" class="sort">
+                <option value="status" selected>Sort: Status</option>
+                <option value="name">Sort: Name</option>
+                <option value="size">Sort: Size</option>
+              </select>
               <button id="resume-all" class="secondary" type="button">Resume all</button>
               <button id="pause-all" class="secondary" type="button">Pause all</button>
-              <button id="refresh" class="quiet" type="button">Refresh</button>
+              <button id="retry-failed" class="secondary" type="button" hidden>Retry failed</button>
+              <button id="clear-failed" class="secondary" type="button" hidden>Clear failed</button>
             </div>
           </div>
 
@@ -179,7 +196,12 @@
             <span class="file-kind" aria-hidden="true"></span>
             <div class="identity-text">
               <h3 class="filename"></h3>
-              <p class="download-state"></p>
+              <p class="download-meta">
+                <span class="download-state"></span>
+                <!-- Provenance: a card named "download" with no origin is unidentifiable,
+                     and for executables the origin is a safety fact, not decoration. -->
+                <span class="download-source"></span>
+              </p>
             </div>
           </div>
           <div class="headline-metrics">
@@ -202,7 +224,10 @@
           <span class="metric"><span class="metric-label">Connections</span> <span class="conns"></span></span>
         </div>
 
-        <p class="download-error" role="alert" hidden></p>
+        <div class="download-error" role="alert" hidden>
+          <p class="error-headline"></p>
+          <p class="error-hint"></p>
+        </div>
 
         <div class="details" hidden>
           <dl class="detail-grid">
@@ -210,6 +235,8 @@
             <div><dt>Saving to</dt><dd class="detail-dir"></dd></div>
             <div><dt>Pieces</dt><dd class="detail-pieces"></dd></div>
             <div><dt>Resume</dt><dd class="detail-resume"></dd></div>
+            <!-- The engine's own words, for diagnosing; the card explains in ours. -->
+            <div class="detail-raw-row" hidden><dt>Engine report</dt><dd class="detail-raw"></dd></div>
           </dl>
         </div>
 

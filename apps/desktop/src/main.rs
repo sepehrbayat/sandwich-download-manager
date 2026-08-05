@@ -41,6 +41,10 @@ struct Snapshot {
 
 #[derive(Clone, Serialize)]
 struct DownloadError {
+    /// aria2's numeric exit code, when it reported one. The UI keys its human explanation off
+    /// this; the raw message stays available under details for anyone diagnosing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    code: Option<u32>,
     message: String,
 }
 
@@ -104,6 +108,10 @@ fn to_snapshot(status: &Aria2Status) -> Snapshot {
             .as_ref()
             .filter(|message| !message.is_empty())
             .map(|message| DownloadError {
+                code: status
+                    .error_code
+                    .as_deref()
+                    .and_then(|code| code.parse().ok()),
                 message: message.clone(),
             }),
     }
@@ -213,6 +221,36 @@ async fn control_download(
     } else {
         None
     };
+
+    // A failed transfer cannot be resumed — aria2 has already given up on it — so retrying
+    // means queueing the same URL to the same place again and letting `--continue` pick up
+    // whatever partial file is on disk. The old failed entry is removed so the queue shows
+    // one download, not the corpse and its replacement side by side.
+    if action == "retry" {
+        let old = engine
+            .status(&download_id)
+            .await
+            .map_err(|error| error.to_string())?;
+        let url = old.source_url();
+        if url.is_empty() {
+            return Err("the original address of this download is no longer known".into());
+        }
+        let filename = old
+            .files
+            .first()
+            .and_then(|file| Path::new(&file.path).file_name())
+            .and_then(|name| name.to_str())
+            .map(str::to_owned)
+            .unwrap_or_else(|| derived_filename(&url));
+        let directory = PathBuf::from(&old.dir);
+        let _ = engine.cancel(&download_id).await;
+        let gid = engine
+            .add_uri(&url, &directory, &filename)
+            .await
+            .map_err(|error| error.to_string())?;
+        let status = engine.status(&gid).await.map_err(|error| error.to_string())?;
+        return Ok(to_snapshot(&status));
+    }
 
     match action.as_str() {
         "pause" => engine.pause(&download_id).await,

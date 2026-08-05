@@ -17,12 +17,15 @@ createServer(async (request, response) => {
           if (command === "list_downloads") return [
             { id: "active-1", filename: "ubuntu-24.04.iso", status: "active", completed_bytes: 5242880, total_bytes: 10485760, bytes_per_second: 1048576, eta_seconds: 5, connections: 8, num_pieces: 40, bitfield: "ffffe000000000000000", source_url: "https://releases.example.com/ubuntu-24.04.iso", directory: "C:\\Users\\Tester\\Downloads" },
             { id: "paused-1", filename: "album.flac", status: "paused", completed_bytes: 1048576, total_bytes: 4194304, bytes_per_second: 0, connections: 0, num_pieces: 16, bitfield: "f000", source_url: "https://music.example.com/album.flac", directory: "C:\\Users\\Tester\\Downloads" },
-            { id: "failed-1", filename: "report.pdf", status: "failed", completed_bytes: 0, total_bytes: 2048, bytes_per_second: 0, connections: 0, num_pieces: 1, bitfield: "0", error: { message: "The destination is unavailable." }, source_url: "https://docs.example.com/report.pdf", directory: "C:\\Users\\Tester\\Downloads" },
+            { id: "failed-1", filename: "report.pdf", status: "failed", completed_bytes: 0, total_bytes: 2048, bytes_per_second: 0, connections: 0, num_pieces: 1, bitfield: "0", error: { code: 22, message: "The response status is not successful. status=403" }, source_url: "https://docs.example.com/report.pdf", directory: "C:\\Users\\Tester\\Downloads" },
             { id: "completed-1", filename: "setup.exe", status: "completed", completed_bytes: 4096, total_bytes: 4096, bytes_per_second: 0, connections: 0, num_pieces: 8, bitfield: "ff", source_url: "https://apps.example.com/setup.exe", directory: "C:\\Users\\Tester\\Downloads" }
           ];
           if (command === "choose_destination") return "C:\\\\Users\\\\Tester\\\\Downloads";
           if (command === "submit_url") return { id: "queued-2", filename: "manual.iso", status: "queued", completed_bytes: 0, total_bytes: 2097152, bytes_per_second: 0 };
-          if (command === "control_download") return { id: payload.downloadId, filename: "example.zip", status: payload.action === "pause" ? "paused" : "cancelled", completed_bytes: 5242880, total_bytes: 10485760, bytes_per_second: 0 };
+          if (command === "control_download") {
+            if (payload.action === "retry") return { id: "retried-" + payload.downloadId, filename: "report.pdf", status: "active", completed_bytes: 0, total_bytes: 2048, bytes_per_second: 128, connections: 1, num_pieces: 1, bitfield: "0", source_url: "https://docs.example.com/report.pdf", directory: "C:\\Users\\Tester\\Downloads" };
+            return { id: payload.downloadId, filename: "example.zip", status: payload.action === "pause" ? "paused" : "cancelled", completed_bytes: 5242880, total_bytes: 10485760, bytes_per_second: 0 };
+          }
         },
         listen: async (event, handler) => {
           if (event === "clipboard-url-offer") setTimeout(() => handler({ payload: { display_url: "https://example.com/copied.zip", token: "fixture-offer" } }), 50);
