@@ -42,6 +42,9 @@ fn stage_browser_host() {
     if let Err(error) = std::fs::copy(source, destination) {
         // Windows refuses to overwrite a running executable. Say which file, because the
         // bundle failure it causes names only the resource path.
-        println!("cargo:warning=could not stage {}: {error}", source.display());
+        println!(
+            "cargo:warning=could not stage {}: {error}",
+            source.display()
+        );
     }
 }

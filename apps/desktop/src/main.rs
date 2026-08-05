@@ -248,7 +248,10 @@ async fn control_download(
             .add_uri(&url, &directory, &filename)
             .await
             .map_err(|error| error.to_string())?;
-        let status = engine.status(&gid).await.map_err(|error| error.to_string())?;
+        let status = engine
+            .status(&gid)
+            .await
+            .map_err(|error| error.to_string())?;
         return Ok(to_snapshot(&status));
     }
 
