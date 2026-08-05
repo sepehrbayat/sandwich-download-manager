@@ -1,13 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod history;
 mod settings;
 
 use aria2_client::{Aria2, Aria2Status};
 use download_policy::DownloadStatus;
+use history::HistoryStore;
 use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -35,6 +37,11 @@ struct Snapshot {
     connections: u32,
     source_url: String,
     directory: String,
+    /// Unix seconds, from the sidecar history store — aria2 itself keeps no clocks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    added_at: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    completed_at: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<DownloadError>,
 }
@@ -57,6 +64,7 @@ struct ClipboardOffer {
 struct AppState {
     engine: Option<Arc<Aria2>>,
     config_dir: PathBuf,
+    history: Arc<Mutex<HistoryStore>>,
 }
 
 impl AppState {
@@ -103,6 +111,8 @@ fn to_snapshot(status: &Aria2Status) -> Snapshot {
         connections: status.connection_count(),
         source_url: status.source_url(),
         directory: status.dir.clone(),
+        added_at: None,
+        completed_at: None,
         error: status
             .error_message
             .as_ref()
@@ -117,6 +127,17 @@ fn to_snapshot(status: &Aria2Status) -> Snapshot {
     }
 }
 
+/// Joins the sidecar timestamps onto a snapshot. `to_snapshot` stays a pure translation of
+/// engine state; time is deliberately stamped at the edges, where the store is in reach.
+fn stamped(mut snapshot: Snapshot, history: &Mutex<HistoryStore>) -> Snapshot {
+    if let Ok(store) = history.lock() {
+        let times = store.get(&snapshot.id);
+        snapshot.added_at = times.added_at;
+        snapshot.completed_at = times.completed_at;
+    }
+    snapshot
+}
+
 fn derived_filename(value: &str) -> String {
     url::Url::parse(value)
         .ok()
@@ -128,6 +149,7 @@ fn derived_filename(value: &str) -> String {
 /// Shared by manual submission and clipboard confirmation so both follow one code path.
 async fn queue_download(
     engine: &Aria2,
+    history: &Mutex<HistoryStore>,
     url: String,
     destination: String,
     organize_by_type: bool,
@@ -149,11 +171,14 @@ async fn queue_download(
         .add_uri(&url, &folder, &filename)
         .await
         .map_err(|error| error.to_string())?;
+    if let Ok(mut store) = history.lock() {
+        store.record_added(&gid);
+    }
     let status = engine
         .status(&gid)
         .await
         .map_err(|error| error.to_string())?;
-    Ok(to_snapshot(&status))
+    Ok(stamped(to_snapshot(&status), history))
 }
 
 #[tauri::command]
@@ -163,7 +188,10 @@ async fn list_downloads(state: State<'_, AppState>) -> Result<Vec<Snapshot>, Str
         .all()
         .await
         .map_err(|error| error.to_string())?;
-    Ok(all.iter().map(to_snapshot).collect())
+    Ok(all
+        .iter()
+        .map(|status| stamped(to_snapshot(status), &state.history))
+        .collect())
 }
 
 #[tauri::command]
@@ -189,7 +217,14 @@ async fn submit_url(
     destination: String,
     organize_by_type: bool,
 ) -> Result<Snapshot, String> {
-    queue_download(state.engine()?, url, destination, organize_by_type).await
+    queue_download(
+        state.engine()?,
+        &state.history,
+        url,
+        destination,
+        organize_by_type,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -199,7 +234,14 @@ async fn confirm_clipboard_offer(
     destination: String,
     organize_by_type: bool,
 ) -> Result<Snapshot, String> {
-    queue_download(state.engine()?, offer.url, destination, organize_by_type).await
+    queue_download(
+        state.engine()?,
+        &state.history,
+        offer.url,
+        destination,
+        organize_by_type,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -248,11 +290,16 @@ async fn control_download(
             .add_uri(&url, &directory, &filename)
             .await
             .map_err(|error| error.to_string())?;
+        // The retry is a new transfer and gets today's date; anything else would file a
+        // download the user just started under last week.
+        if let Ok(mut store) = state.history.lock() {
+            store.record_added(&gid);
+        }
         let status = engine
             .status(&gid)
             .await
             .map_err(|error| error.to_string())?;
-        return Ok(to_snapshot(&status));
+        return Ok(stamped(to_snapshot(&status), &state.history));
     }
 
     match action.as_str() {
@@ -278,18 +325,20 @@ async fn control_download(
             connections: 0,
             source_url: String::new(),
             directory: String::new(),
+            added_at: None,
+            completed_at: None,
             error: None,
         });
         snapshot.status = DownloadStatus::Cancelled;
         snapshot.bytes_per_second = 0;
         snapshot.eta_seconds = None;
-        return Ok(snapshot);
+        return Ok(stamped(snapshot, &state.history));
     }
     let status = engine
         .status(&download_id)
         .await
         .map_err(|error| error.to_string())?;
-    Ok(to_snapshot(&status))
+    Ok(stamped(to_snapshot(&status), &state.history))
 }
 
 async fn completed_path(engine: &Aria2, id: &str) -> Result<PathBuf, String> {
@@ -304,6 +353,12 @@ async fn completed_path(engine: &Aria2, id: &str) -> Result<PathBuf, String> {
         .ok_or_else(|| "download has no output file".to_owned())
 }
 
+/// Stable sentinel the UI matches on to show its "file was moved or deleted" dialog.
+/// The engine still lists the download, but the file system has moved on: users move and
+/// delete finished files, and without this check "open" errored cryptically while "reveal"
+/// silently opened the wrong folder.
+const MISSING_FILE: &str = "missing";
+
 #[tauri::command]
 async fn open_completed_file(
     app: AppHandle,
@@ -311,6 +366,9 @@ async fn open_completed_file(
     download_id: String,
 ) -> Result<(), String> {
     let path = completed_path(state.engine()?, &download_id).await?;
+    if !path.exists() {
+        return Err(MISSING_FILE.into());
+    }
     app.opener()
         .open_path(path.to_string_lossy(), None::<&str>)
         .map_err(|error| error.to_string())
@@ -323,27 +381,52 @@ async fn reveal_completed_file(
     download_id: String,
 ) -> Result<(), String> {
     let path = completed_path(state.engine()?, &download_id).await?;
+    if !path.exists() {
+        return Err(MISSING_FILE.into());
+    }
     app.opener()
         .reveal_item_in_dir(path)
         .map_err(|error| error.to_string())
 }
 
+/// True exactly when a download the poller has been watching crosses into Completed.
+/// A gid first seen already complete (session restore after a restart) is old news, not an
+/// event — announcing it would greet every launch with a wall of stale notifications.
+fn is_new_completion(previous: Option<&DownloadStatus>, current: &DownloadStatus) -> bool {
+    *current == DownloadStatus::Completed
+        && matches!(previous, Some(old) if *old != DownloadStatus::Completed)
+}
+
 /// Pushes queue changes to the UI. Only transfers whose visible state actually changed are
 /// emitted, so a stalled queue stays silent instead of repeating itself to assistive tech.
-fn spawn_progress_poller(app: AppHandle, engine: Arc<Aria2>) {
+fn spawn_progress_poller(app: AppHandle, engine: Arc<Aria2>, history: Arc<Mutex<HistoryStore>>) {
     tauri::async_runtime::spawn(async move {
         let mut previous: std::collections::HashMap<String, (u64, DownloadStatus, u32)> =
             std::collections::HashMap::new();
         loop {
             if let Ok(all) = engine.all().await {
                 for status in &all {
-                    let snapshot = to_snapshot(status);
+                    let snapshot = stamped(to_snapshot(status), &history);
+                    let finished = is_new_completion(
+                        previous.get(&snapshot.id).map(|(_, status, _)| status),
+                        &snapshot.status,
+                    );
+                    if finished {
+                        if let Ok(mut store) = history.lock() {
+                            store.record_completed(&snapshot.id);
+                        }
+                        announce_completion(&app, &snapshot);
+                    }
                     let key = (
                         snapshot.completed_bytes,
                         snapshot.status.clone(),
                         snapshot.connections,
                     );
-                    if previous.get(&snapshot.id) != Some(&key) {
+                    if previous
+                        .get(&snapshot.id)
+                        .map(|entry| entry != &key)
+                        .unwrap_or(true)
+                    {
                         previous.insert(snapshot.id.clone(), key);
                         let _ = app.emit("download-snapshot", snapshot);
                     }
@@ -352,6 +435,28 @@ fn spawn_progress_poller(app: AppHandle, engine: Arc<Aria2>) {
             tokio::time::sleep(POLL_INTERVAL).await;
         }
     });
+}
+
+/// The in-app toast always fires; the OS notification only when the window is not focused.
+/// Notifying someone about the window they are already looking at is noise, not news.
+fn announce_completion(app: &AppHandle, snapshot: &Snapshot) {
+    use tauri_plugin_notification::NotificationExt;
+
+    let _ = app.emit("download-completed", snapshot.clone());
+    let focused = app
+        .webview_windows()
+        .values()
+        .next()
+        .and_then(|window| window.is_focused().ok())
+        .unwrap_or(false);
+    if !focused {
+        let _ = app
+            .notification()
+            .builder()
+            .title("Download complete")
+            .body(&snapshot.filename)
+            .show();
+    }
 }
 
 fn spawn_clipboard_watcher(app: AppHandle) {
@@ -388,6 +493,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let handle = app.handle().clone();
             let data_dir = app
@@ -418,8 +524,22 @@ fn main() {
                     None
                 }
             };
+            let history = Arc::new(Mutex::new(HistoryStore::load(&data_dir)));
             if let Some(engine) = engine.as_ref() {
-                spawn_progress_poller(handle.clone(), engine.clone());
+                // Trim history to what the engine still knows, so the sidecar tracks the
+                // queue instead of growing forever.
+                if let Ok(all) = tauri::async_runtime::block_on(engine.all()) {
+                    let live = all.iter().map(|status| status.gid.clone()).collect();
+                    if let Ok(mut store) = history.lock() {
+                        store.prune(&live);
+                        // Session-restored downloads predate the store (or survived a wipe):
+                        // give them an added date of "now" rather than no date at all.
+                        for status in &all {
+                            store.record_added(&status.gid);
+                        }
+                    }
+                }
+                spawn_progress_poller(handle.clone(), engine.clone(), history.clone());
                 // Publish how to reach the engine so the browser native host can hand
                 // downloads to this running instance. The token inside is what protects the
                 // endpoint, so the file lives in the user's own app data and nowhere else.
@@ -435,6 +555,7 @@ fn main() {
             app.manage(AppState {
                 engine,
                 config_dir: data_dir,
+                history,
             });
             spawn_clipboard_watcher(handle);
             Ok(())
@@ -452,4 +573,41 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Sandwich Download Manager");
+}
+
+#[cfg(test)]
+mod completion_tests {
+    use super::*;
+
+    #[test]
+    fn a_watched_download_finishing_is_news() {
+        assert!(is_new_completion(
+            Some(&DownloadStatus::Active),
+            &DownloadStatus::Completed
+        ));
+    }
+
+    #[test]
+    fn an_already_complete_download_is_not_news_again() {
+        assert!(!is_new_completion(
+            Some(&DownloadStatus::Completed),
+            &DownloadStatus::Completed
+        ));
+    }
+
+    #[test]
+    fn a_download_first_seen_complete_is_history_not_news() {
+        // Session restore after a restart: everything in the queue arrives at once, some of
+        // it already complete. Greeting every launch with stale notifications would teach
+        // people to ignore the real ones.
+        assert!(!is_new_completion(None, &DownloadStatus::Completed));
+    }
+
+    #[test]
+    fn progress_alone_is_not_completion() {
+        assert!(!is_new_completion(
+            Some(&DownloadStatus::Active),
+            &DownloadStatus::Active
+        ));
+    }
 }
