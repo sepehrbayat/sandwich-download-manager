@@ -162,8 +162,16 @@
               <label class="sr-only" for="queue-sort">Sort downloads</label>
               <select id="queue-sort" class="sort">
                 <option value="status" selected>Sort: Status</option>
+                <option value="newest">Sort: Newest</option>
                 <option value="name">Sort: Name</option>
                 <option value="size">Sort: Size</option>
+              </select>
+              <label class="sr-only" for="date-filter">Show downloads from</label>
+              <select id="date-filter" class="sort">
+                <option value="all" selected>All time</option>
+                <option value="today">Today</option>
+                <option value="week">Last 7 days</option>
+                <option value="month">Last 30 days</option>
               </select>
               <button id="resume-all" class="secondary" type="button">Resume all</button>
               <button id="pause-all" class="secondary" type="button">Pause all</button>

@@ -1,4 +1,4 @@
-import { describeError, formatBytes, formatEta, orderedCells, progressPercent, sourceHost, statusLabels } from "./formatters.js";
+import { dateGroup, describeError, formatBytes, formatEta, orderedCells, progressPercent, sourceHost, statusLabels } from "./formatters.js";
 import { confirmDialog, messageDialog, toast } from "./feedback.js";
 
 const invoke = window.__TAURI__?.core?.invoke ?? window.__TAURI_INTERNALS__?.invoke;
@@ -39,6 +39,7 @@ const elements = {
   throughput: document.querySelector("#throughput-value"),
   search: document.querySelector("#queue-search"),
   sort: document.querySelector("#queue-sort"),
+  dateFilter: document.querySelector("#date-filter"),
   pauseAll: document.querySelector("#pause-all"),
   resumeAll: document.querySelector("#resume-all"),
   retryFailed: document.querySelector("#retry-failed"),
@@ -56,6 +57,7 @@ let clipboardOffer = null;
 let filter = "all";
 let searchQuery = "";
 let sortMode = "status";
+let dateRange = "all";
 const cards = new Map();
 const expanded = new Set();
 // Disabling a focused button blurs it immediately, so by the time a re-render runs the browser
@@ -385,6 +387,23 @@ function matchesSearch(item) {
   return haystack.includes(searchQuery);
 }
 
+/** A download's place on the calendar: when it finished, or failing that, when it started. */
+function itemDate(item) {
+  return item.completed_at ?? item.added_at ?? 0;
+}
+
+function matchesDate(item) {
+  if (dateRange === "all") return true;
+  const stamp = itemDate(item);
+  if (!stamp) return false;
+  const now = new Date();
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
+  if (dateRange === "today") return stamp >= midnight;
+  if (dateRange === "week") return stamp >= midnight - 6 * 86400;
+  if (dateRange === "month") return stamp >= midnight - 29 * 86400;
+  return true;
+}
+
 function updateCounts() {
   const counts = { all: downloads.length };
   for (const name of ["active", "paused", "completed", "failed"]) {
@@ -410,6 +429,7 @@ function orderDownloads(items) {
   const ranked = items.map((item, index) => ({ item, index }));
   const by = {
     status: (a, b) => (STATUS_ORDER[a.item.status] ?? 9) - (STATUS_ORDER[b.item.status] ?? 9),
+    newest: (a, b) => itemDate(b.item) - itemDate(a.item),
     name: (a, b) => a.item.filename.localeCompare(b.item.filename, undefined, { sensitivity: "base" }),
     size: (a, b) => (b.item.total_bytes || 0) - (a.item.total_bytes || 0)
   }[sortMode] ?? (() => 0);
@@ -425,11 +445,28 @@ function updateThroughput() {
   elements.throughput.textContent = total > 0 ? `${formatBytes(total)}/s` : "0 B/s";
 }
 
+// Shelf labels between cards when the queue is sorted by date. Cached per label so the
+// reconciler can move them without rebuilding, like the cards themselves.
+const groupHeaders = new Map();
+function groupHeader(label) {
+  let header = groupHeaders.get(label);
+  if (!header) {
+    header = document.createElement("li");
+    header.className = "date-group";
+    header.textContent = label;
+    // Presentation only: the card's aria-label already tells the whole story, and a list
+    // item that is not a download would trip up "3 of 7 items" narration.
+    header.setAttribute("aria-hidden", "true");
+    groupHeaders.set(label, header);
+  }
+  return header;
+}
+
 // Reconciles by download id and mutates cards in place. A full rebuild would destroy the
 // button a keyboard user is standing on every time a progress event arrives.
 function render() {
   const visible = orderDownloads(
-    downloads.filter((item) => matchesFilter(item, filter) && matchesSearch(item))
+    downloads.filter((item) => matchesFilter(item, filter) && matchesSearch(item) && matchesDate(item))
   );
   const keep = new Set(visible.map((item) => item.id));
 
@@ -439,19 +476,42 @@ function render() {
       cards.delete(id);
     }
   }
-  visible.forEach((item, index) => {
+
+  // The list is cards plus, under date sort, a shelf label wherever the calendar changes.
+  const nodes = [];
+  const pending = [];
+  let lastShelf = null;
+  const nowSeconds = Date.now() / 1000;
+  for (const item of visible) {
+    if (sortMode === "newest") {
+      const shelf = dateGroup(itemDate(item), nowSeconds);
+      if (shelf !== lastShelf) {
+        nodes.push(groupHeader(shelf));
+        lastShelf = shelf;
+      }
+    }
     let entry = cards.get(item.id);
     if (!entry) {
       entry = createCard(item);
       cards.set(item.id, entry);
     }
-    // Place the card before filling it in: an element outside the document measures zero,
-    // and the segmented bar sizes itself from its own rendered width.
-    if (elements.list.children[index] !== entry.card) {
-      elements.list.insertBefore(entry.card, elements.list.children[index] ?? null);
+    nodes.push(entry.card);
+    pending.push([entry, item]);
+  }
+  for (const [label, header] of groupHeaders) {
+    if (!nodes.includes(header)) {
+      header.remove();
+      groupHeaders.delete(label);
     }
-    updateCard(entry, item);
+  }
+  nodes.forEach((node, index) => {
+    if (elements.list.children[index] !== node) {
+      elements.list.insertBefore(node, elements.list.children[index] ?? null);
+    }
   });
+  // Fill cards in only once they are placed: an element outside the document measures zero,
+  // and the segmented bar sizes itself from its own rendered width.
+  for (const [entry, item] of pending) updateCard(entry, item);
 
   elements.empty.hidden = visible.length > 0;
   if (visible.length === 0) {
@@ -460,6 +520,9 @@ function render() {
     if (searchQuery) {
       elements.emptyTitle.textContent = `No downloads match “${elements.search.value.trim()}”`;
       elements.emptyHint.textContent = "Check the spelling, or clear the search to see the whole queue.";
+    } else if (dateRange !== "all" && downloads.length > 0) {
+      elements.emptyTitle.textContent = "Nothing in this period";
+      elements.emptyHint.textContent = "Widen the date filter to see older downloads.";
     } else if (filter !== "all" && downloads.length > 0) {
       elements.emptyTitle.textContent = `Nothing under ${elements.queueTitle.textContent}`;
       elements.emptyHint.textContent = "Downloads appear here as soon as one reaches this state.";
@@ -644,6 +707,10 @@ elements.search.addEventListener("input", () => {
 });
 elements.sort.addEventListener("change", () => {
   sortMode = elements.sort.value;
+  render();
+});
+elements.dateFilter.addEventListener("change", () => {
+  dateRange = elements.dateFilter.value;
   render();
 });
 

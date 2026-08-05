@@ -50,6 +50,22 @@ export const statusLabels = {
   completed: "Completed"
 };
 
+/**
+ * Which history shelf a Unix timestamp belongs on, relative to a "now" also in Unix seconds.
+ * Boundaries are local midnights — "Today" means the calendar day the user is living in,
+ * not the last rolling 24 hours.
+ */
+export function dateGroup(epochSeconds, nowEpochSeconds) {
+  if (!epochSeconds) return "Older";
+  const now = new Date(nowEpochSeconds * 1000);
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
+  if (epochSeconds >= midnight) return "Today";
+  if (epochSeconds >= midnight - 86400) return "Yesterday";
+  if (epochSeconds >= midnight - 6 * 86400) return "This week";
+  if (epochSeconds >= midnight - 29 * 86400) return "This month";
+  return "Older";
+}
+
 /** The domain a download came from, for showing provenance without the whole URL. */
 export function sourceHost(url) {
   try {
