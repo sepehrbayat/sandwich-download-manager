@@ -1,4 +1,5 @@
 import { describeError, formatBytes, formatEta, orderedCells, progressPercent, sourceHost, statusLabels } from "./formatters.js";
+import { confirmDialog, messageDialog, toast } from "./feedback.js";
 
 const invoke = window.__TAURI__?.core?.invoke ?? window.__TAURI_INTERNALS__?.invoke;
 const listen = window.__TAURI__?.event?.listen;
@@ -29,6 +30,8 @@ const elements = {
   organize: document.querySelector("#organize"),
   list: document.querySelector("#download-list"),
   empty: document.querySelector("#empty-state"),
+  emptyTitle: document.querySelector("#empty-state .empty-title"),
+  emptyHint: document.querySelector("#empty-state .empty-hint"),
   template: document.querySelector("#download-template"),
   queueStatus: document.querySelector("#queue-status"),
   queueTitle: document.querySelector("#downloads-title"),
@@ -160,6 +163,43 @@ function actionsFor(status) {
   return [];
 }
 
+/**
+ * Opens a finished file, or reveals it in Explorer — after finding out whether it still
+ * exists. The file system moves on without telling us: users move and delete downloads, and
+ * clicking "Show in folder" on a ghost used to either error cryptically or open the wrong
+ * folder. A missing file gets a straight answer and the two useful ways forward.
+ */
+async function openDownloadTarget(item, reveal) {
+  try {
+    await bridge.invoke(reveal ? "reveal_completed_file" : "open_completed_file", { downloadId: item.id });
+  } catch (error) {
+    if (String(error?.message ?? error) !== "missing") {
+      toast(`Could not ${reveal ? "show" : "open"} ${item.filename}: ${error.message ?? error}`, { tone: "error" });
+      return;
+    }
+    const choice = await messageDialog({
+      title: "File not found",
+      body: `${item.filename} no longer exists in ${item.directory || "its folder"}. It may have been moved or deleted.`,
+      actions: [
+        { id: "close", label: "Close" },
+        { id: "remove", label: "Remove from list" },
+        { id: "redownload", label: "Download again", className: "primary" }
+      ]
+    });
+    if (choice === "redownload") {
+      const updated = await bridge.invoke("control_download", { downloadId: item.id, action: "retry" });
+      if (updated.id !== item.id) downloads = downloads.filter((entry) => entry.id !== item.id);
+      mergeDownload(updated, `${item.filename}: downloading again.`);
+      toast(`Downloading ${item.filename} again`, { tone: "info" });
+    } else if (choice === "remove") {
+      await bridge.invoke("control_download", { downloadId: item.id, action: "cancel" });
+      downloads = downloads.filter((entry) => entry.id !== item.id);
+      render();
+      toast(`${item.filename} removed from the list`, { tone: "info" });
+    }
+  }
+}
+
 function actionButton(label, action, item) {
   const button = document.createElement("button");
   button.type = "button";
@@ -168,11 +208,25 @@ function actionButton(label, action, item) {
   button.setAttribute("aria-label", `${label} ${item.filename}`);
   button.addEventListener("click", async () => {
     if (document.activeElement === button) pendingFocusId = item.id;
+
+    // Killing a live transfer throws away real progress, so it gets a question first.
+    // Removing an already-dead entry only clears a line from a list; asking would be nagging.
+    const live = ["active", "queued", "paused", "recoverably_interrupted"].includes(item.status);
+    if (action === "cancel" && live) {
+      const sure = await confirmDialog({
+        title: "Cancel this download?",
+        body: `${item.filename} will stop. Partial data stays on disk and a retry can pick it back up.`,
+        confirmLabel: "Cancel download",
+        cancelLabel: "Keep downloading",
+        tone: "danger"
+      });
+      if (!sure) return;
+    }
+
     button.disabled = true;
     try {
-      if (action === "open") await bridge.invoke("open_completed_file", { downloadId: item.id });
-      else if (action === "reveal") await bridge.invoke("reveal_completed_file", { downloadId: item.id });
-      else if (action === "cancel" && ["failed", "cancelled"].includes(item.status)) {
+      if (action === "open" || action === "reveal") await openDownloadTarget(item, action === "reveal");
+      else if (action === "cancel" && !live) {
         // On a dead transfer this button reads "Remove": the user is clearing the entry,
         // so take it off the list now rather than leaving a card that waits for a poll.
         await bridge.invoke("control_download", { downloadId: item.id, action });
@@ -184,9 +238,10 @@ function actionButton(label, action, item) {
         // A retry is a new transfer with a new id; the failed original it replaces goes away.
         if (updated.id !== item.id) downloads = downloads.filter((entry) => entry.id !== item.id);
         mergeDownload(updated, `${item.filename}: ${statusLabels[updated.status] ?? updated.status}`);
+        if (action === "retry") toast(`Retrying ${item.filename}`, { tone: "info" });
       }
     } catch (error) {
-      elements.queueStatus.textContent = `${label} failed for ${item.filename}: ${error.message ?? error}`;
+      toast(`${label} failed for ${item.filename}: ${error.message ?? error}`, { tone: "error" });
     } finally {
       if (button.isConnected) button.disabled = false;
     }
@@ -399,6 +454,20 @@ function render() {
   });
 
   elements.empty.hidden = visible.length > 0;
+  if (visible.length === 0) {
+    // Say *why* the plate is empty: "no results for your search" and "you have no downloads"
+    // call for different next moves, and one generic message hides that.
+    if (searchQuery) {
+      elements.emptyTitle.textContent = `No downloads match “${elements.search.value.trim()}”`;
+      elements.emptyHint.textContent = "Check the spelling, or clear the search to see the whole queue.";
+    } else if (filter !== "all" && downloads.length > 0) {
+      elements.emptyTitle.textContent = `Nothing under ${elements.queueTitle.textContent}`;
+      elements.emptyHint.textContent = "Downloads appear here as soon as one reaches this state.";
+    } else {
+      elements.emptyTitle.textContent = "Nothing on the plate yet";
+      elements.emptyHint.textContent = "Add a URL, or copy a link and Sandwich will offer to fetch it.";
+    }
+  }
   updateCounts();
   updateThroughput();
 
@@ -474,6 +543,7 @@ elements.form.addEventListener("submit", async (event) => {
       organizeByType: elements.organize.checked
     });
     mergeDownload(snapshot, `${snapshot.filename} added to the queue.`);
+    toast(`Queued ${snapshot.filename}`, { tone: "success" });
     elements.url.value = "";
     elements.url.focus();
   } catch (error) {
@@ -483,13 +553,21 @@ elements.form.addEventListener("submit", async (event) => {
   }
 });
 
+let dismissSettingsToast = null;
+
 async function persistSettings() {
   try {
     await bridge.invoke("save_settings", {
       settings: { destination, organize_by_type: elements.organize.checked }
     });
+    // One quiet receipt, replaced rather than stacked when settings change in a burst.
+    dismissSettingsToast?.();
+    dismissSettingsToast = toast("Settings saved", { tone: "success" });
   } catch {
-    // Preferences are a convenience; failing to store them must not interrupt a download.
+    // Preferences are a convenience; failing to store them must not interrupt a download —
+    // but it must not be silent either, or the user finds out on the next launch.
+    dismissSettingsToast?.();
+    dismissSettingsToast = toast("Settings could not be saved — they apply for now but may not survive a restart.", { tone: "error" });
   }
 }
 
@@ -510,6 +588,7 @@ elements.organize.addEventListener("change", persistSettings);
 
 async function forEachVisible(action) {
   const targets = downloads.filter((item) => matchesFilter(item, filter));
+  let touched = 0;
   for (const item of targets) {
     const applicable = action === "pause"
       ? ["active", "queued"].includes(item.status)
@@ -518,9 +597,13 @@ async function forEachVisible(action) {
     try {
       const updated = await bridge.invoke("control_download", { downloadId: item.id, action });
       mergeDownload(updated);
+      touched += 1;
     } catch { /* one failure must not stop the rest of the queue */ }
   }
-  elements.queueStatus.textContent = action === "pause" ? "Paused the queue." : "Resumed the queue.";
+  const verb = action === "pause" ? "Paused" : "Resumed";
+  elements.queueStatus.textContent = `${verb} the queue.`;
+  // "Pause all" with nothing to pause is a click into the void without this.
+  toast(touched > 0 ? `${verb} ${touched} download${touched === 1 ? "" : "s"}` : "Nothing to " + action, { tone: "info" });
 }
 
 elements.pauseAll.addEventListener("click", () => forEachVisible("pause"));
@@ -538,8 +621,22 @@ async function forEachFailed(action, announcement) {
   render();
   elements.queueStatus.textContent = announcement;
 }
-elements.retryFailed.addEventListener("click", () => forEachFailed("retry", "Retrying every failed download."));
-elements.clearFailed.addEventListener("click", () => forEachFailed("cancel", "Cleared the failed downloads."));
+elements.retryFailed.addEventListener("click", async () => {
+  await forEachFailed("retry", "Retrying every failed download.");
+  toast("Retrying every failed download", { tone: "info" });
+});
+elements.clearFailed.addEventListener("click", async () => {
+  const count = downloads.filter((item) => item.status === "failed").length;
+  const sure = await confirmDialog({
+    title: "Clear failed downloads?",
+    body: `${count} failed download${count === 1 ? "" : "s"} will be removed from the list. Files already on disk stay where they are.`,
+    confirmLabel: "Clear failed",
+    tone: "danger"
+  });
+  if (!sure) return;
+  await forEachFailed("cancel", "Cleared the failed downloads.");
+  toast(`Cleared ${count} failed download${count === 1 ? "" : "s"}`, { tone: "info" });
+});
 
 elements.search.addEventListener("input", () => {
   searchQuery = elements.search.value.trim().toLowerCase();
@@ -572,8 +669,9 @@ elements.confirmOffer.addEventListener("click", async () => {
     clipboardOffer = null;
     elements.offer.hidden = true;
     mergeDownload(snapshot, `${snapshot.filename} added from the clipboard.`);
+    toast(`Queued ${snapshot.filename}`, { tone: "success" });
   } catch (error) {
-    elements.queueStatus.textContent = `Could not add the copied link: ${error.message ?? error}`;
+    toast(`Could not add the copied link: ${error.message ?? error}`, { tone: "error" });
   }
 });
 
@@ -584,6 +682,16 @@ bridge.listen("download-snapshot", ({ payload }) => {
     ? null
     : `${payload.filename}: ${statusLabels[payload.status] ?? payload.status}`;
   mergeDownload(payload, announcement);
+});
+
+bridge.listen("download-completed", ({ payload }) => {
+  toast(`${payload.filename} finished downloading`, {
+    tone: "success",
+    actions: [
+      { label: "Open", onClick: () => openDownloadTarget(payload, false) },
+      { label: "Show in folder", onClick: () => openDownloadTarget(payload, true) }
+    ]
+  });
 });
 
 bridge.listen("clipboard-url-offer", ({ payload }) => {
