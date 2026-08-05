@@ -448,7 +448,20 @@ impl Aria2 {
         Ok(everything)
     }
 
+    /// Asks the engine to write its session file right now.
+    ///
+    /// The periodic save (`--save-session-interval`) leaves a window: anything removed or
+    /// finished in the last few seconds is lost if the process is killed before the next
+    /// tick — and the Job Object kill on app exit guarantees exactly that. Ghost downloads
+    /// then resurrect on the next launch and quietly occupy transfer slots.
+    pub async fn save_session(&self) {
+        let _ = self.call("aria2.saveSession", serde_json::json!([])).await;
+    }
+
     pub async fn shutdown(&self) {
+        // Save first: shutdown also saves, but if it stalls waiting on a slow tracker the
+        // session is already safe on disk before the backstop kill lands.
+        self.save_session().await;
         let _ = self.call("aria2.shutdown", serde_json::json!([])).await;
     }
 }

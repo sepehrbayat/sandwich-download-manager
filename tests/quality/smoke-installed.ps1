@@ -95,9 +95,10 @@ function Cleanup($handoff) {
     }
   }
   Start-Sleep -Milliseconds 500
-  foreach ($name in $script:created) {
-    Remove-Item (Join-Path $env:USERPROFILE "Downloads\$name*") -Force -ErrorAction SilentlyContinue
-  }
+  # By prefix, not by exact name: when a file already exists aria2 renames the newcomer to
+  # name.1.ext, which "name.ext*" never matches. One survivor then poisons the next run —
+  # its partial makes "progress" look instant and resume measurements meaningless.
+  Remove-Item (Join-Path $env:USERPROFILE "Downloads\$prefix*") -Force -ErrorAction SilentlyContinue
 }
 
 # --- run ---------------------------------------------------------------------------------
@@ -111,6 +112,9 @@ if (-not (Test-Path $AppPath)) {
 }
 
 Section "Startup"
+# A previous run that died mid-way leaves partials behind; measuring against them makes
+# this run lie in both directions. Start from a clean plate.
+Remove-Item (Join-Path $env:USERPROFILE "Downloads\$prefix*") -Force -ErrorAction SilentlyContinue
 Get-Process -Name sandwich-desktop -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.Id -Force }
 Start-Sleep -Seconds 2
 Start-Process $AppPath | Out-Null

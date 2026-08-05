@@ -571,8 +571,23 @@ fn main() {
             open_completed_file,
             reveal_completed_file
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run Sandwich Download Manager");
+        .build(tauri::generate_context!())
+        .expect("failed to run Sandwich Download Manager")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                // A graceful goodbye, so the session file records reality. Without it the
+                // Job Object kills aria2 before its next periodic save, and anything
+                // removed or finished in the final seconds resurrects on the next launch —
+                // ghost transfers that silently occupy the engine's download slots.
+                let state = app_handle.state::<AppState>();
+                if let Some(engine) = state.engine.clone() {
+                    tauri::async_runtime::block_on(async move {
+                        let _ = tokio::time::timeout(Duration::from_secs(3), engine.shutdown())
+                            .await;
+                    });
+                }
+            }
+        });
 }
 
 #[cfg(test)]

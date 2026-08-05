@@ -3079,7 +3079,7 @@ dependencies = [
 
 [[package]]
 name = "sandwich-desktop"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "aria2-client",
  "download-policy",
