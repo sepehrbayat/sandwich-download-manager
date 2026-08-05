@@ -233,3 +233,118 @@ test("every control carries an accessible name", async ({ page }) => {
   );
   expect(described).toBe(true);
 });
+
+/* ── v0.3.0: ordered fill, fillings, feedback, dates, themes ─────────────── */
+
+test("the bar fills strictly left to right from byte progress", async ({ page }) => {
+  const cells = page.locator(".download-card").first().locator(".piece");
+  const total = await cells.count();
+  const done = await page.locator(".download-card").first().locator(".piece.is-done").count();
+  // 50% complete in the fixture: half the cells, and they must be a prefix.
+  expect(done).toBe(Math.floor(total * 0.5));
+  for (let i = 0; i < done; i += 1) {
+    await expect(cells.nth(i)).toHaveClass(/is-done/);
+  }
+  await expect(cells.nth(total - 1)).not.toHaveClass(/is-done/);
+});
+
+test("fillings repeat down a fixed assembly order", async ({ page }) => {
+  const cells = page.locator(".download-card").first().locator(".piece");
+  for (let i = 0; i < 6; i += 1) {
+    await expect(cells.nth(i)).toHaveClass(new RegExp(`f${i}(\\s|$)`));
+  }
+  // Same order again one sandwich later.
+  await expect(cells.nth(6)).toHaveClass(/f0(\s|$)/);
+});
+
+test("a finished download announces itself with the two useful actions", async ({ page }) => {
+  await page.evaluate(() => {
+    window.__sandwichHandlers["download-completed"]({
+      payload: { id: "done-9", filename: "movie.mkv", status: "completed", directory: "C:\\Downloads" }
+    });
+  });
+  const toast = page.locator(".toast--success");
+  await expect(toast).toContainText("movie.mkv finished downloading");
+  await expect(toast.getByRole("button", { name: "Open" })).toBeVisible();
+  await expect(toast.getByRole("button", { name: "Show in folder" })).toBeVisible();
+});
+
+test("opening a file that was deleted gets a real answer", async ({ page }) => {
+  await page.evaluate(() => {
+    const original = window.__SANDWICH_TEST_BRIDGE__.invoke;
+    window.__SANDWICH_TEST_BRIDGE__.invoke = async (command, payload) => {
+      if (command === "open_completed_file") throw new Error("missing");
+      return original(command, payload);
+    };
+  });
+  await page.getByRole("button", { name: /Open file setup\.exe/ }).click();
+  const dialog = page.locator("#app-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("File not found");
+  await expect(dialog.getByRole("button", { name: "Download again" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Remove from list" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toBeHidden();
+});
+
+test("cancelling a live download asks first, and keeping it changes nothing", async ({ page }) => {
+  await page.getByRole("button", { name: /Cancel ubuntu/ }).click();
+  const dialog = page.locator("#app-dialog");
+  await expect(dialog).toContainText("Cancel this download?");
+  await dialog.getByRole("button", { name: "Keep downloading" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator(".download-card")).toHaveCount(4);
+});
+
+test("newest sort shelves the queue by date", async ({ page }) => {
+  const now = Math.floor(Date.now() / 1000);
+  await seed(page, [
+    { id: "d1", filename: "today.zip", status: "completed", completed_bytes: 10, total_bytes: 10,
+      bytes_per_second: 0, connections: 0, num_pieces: 1, bitfield: "80",
+      source_url: "https://example.com/today.zip", directory: "C:\\Downloads",
+      added_at: now - 60, completed_at: now - 30 },
+    { id: "d2", filename: "lastweek.zip", status: "completed", completed_bytes: 10, total_bytes: 10,
+      bytes_per_second: 0, connections: 0, num_pieces: 1, bitfield: "80",
+      source_url: "https://example.com/lastweek.zip", directory: "C:\\Downloads",
+      added_at: now - 5 * 86400, completed_at: now - 5 * 86400 },
+  ]);
+  await page.locator("#queue-sort").selectOption("newest");
+  const shelves = page.locator(".date-group");
+  await expect(shelves.first()).toHaveText("Today");
+  await expect(shelves.nth(1)).toBeVisible();
+  // Today's file sits under the Today shelf, above the older one.
+  const names = await page.locator(".filename").allInnerTexts();
+  expect(names[0]).toBe("today.zip");
+});
+
+test("the date filter narrows the queue and explains an empty result", async ({ page }) => {
+  await seed(page, [
+    { id: "old1", filename: "ancient.zip", status: "completed", completed_bytes: 10, total_bytes: 10,
+      bytes_per_second: 0, connections: 0, num_pieces: 1, bitfield: "80",
+      source_url: "https://example.com/ancient.zip", directory: "C:\\Downloads",
+      added_at: 1000000, completed_at: 1000000 },
+  ]);
+  await page.locator("#date-filter").selectOption("today");
+  await expect(page.locator(".download-card")).toHaveCount(0);
+  await expect(page.locator("#empty-state")).toContainText("Nothing in this period");
+});
+
+test("a chosen theme survives a reload", async ({ page }) => {
+  await page.locator('.theme-swatch[data-theme-choice="rye"]').click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "rye");
+  await page.reload();
+  await page.waitForSelector(".download-card");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "rye");
+  // Back to the default so later tests see a clean slate.
+  await page.evaluate(() => localStorage.removeItem("sandwich-theme"));
+});
+
+test("the add form settles the destination before asking for a URL", async ({ page }) => {
+  await page.locator("#open-add").click();
+  const before = await page.evaluate(() => {
+    const destination = document.querySelector(".destination-row");
+    const url = document.querySelector("#url");
+    return Boolean(destination.compareDocumentPosition(url) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  expect(before).toBe(true);
+});

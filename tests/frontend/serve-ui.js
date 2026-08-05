@@ -28,6 +28,8 @@ createServer(async (request, response) => {
           }
         },
         listen: async (event, handler) => {
+          // Registry so tests can fire any engine event by hand.
+          (window.__sandwichHandlers ??= {})[event] = handler;
           if (event === "clipboard-url-offer") setTimeout(() => handler({ payload: { display_url: "https://example.com/copied.zip", token: "fixture-offer" } }), 50);
           return () => {};
         }
