@@ -150,6 +150,61 @@ def write_ico(path: Path, sizes=(16, 24, 32, 48, 64, 128, 256)) -> None:
     frames[-1].save(path, format="ICO", sizes=[(s, s) for s in sizes], append_images=frames[:-1])
 
 
+# Installer wizard artwork. NSIS and WiX take 24-bit BMPs at fixed sizes; anything else is
+# silently letterboxed or rejected, which is why the sizes are hard-coded here rather than
+# parameters. The warm cream matches the app's Classic canvas, so install → first launch
+# reads as one product, not a generic gray wizard handing off to a branded app.
+CREAM = (251, 247, 241)
+
+def _cream_canvas(width: int, height: int) -> Image.Image:
+    return Image.new("RGB", (width, height), CREAM)
+
+
+def draw_nsis_header(path: Path) -> None:
+    """150x57, shown top-right of every wizard page: the mark alone, small and clean."""
+    canvas = _cream_canvas(150, 57)
+    mark = draw_mark(40)
+    canvas.paste(mark, (150 - 40 - 12, (57 - 40) // 2), mark)
+    canvas.save(path, format="BMP")
+
+
+def draw_nsis_sidebar(path: Path) -> None:
+    """164x314, the tall welcome/finish panel: mark over the stacked wordmark."""
+    canvas = _cream_canvas(164, 314)
+    mark = draw_mark(96)
+    canvas.paste(mark, ((164 - 96) // 2, 52), mark)
+
+    d = ImageDraw.Draw(canvas)
+    title_font = load_font(True, 24)
+    sub_font = load_font(False, 13)
+    d.text((82, 196), "Sandwich", font=title_font, fill=INK, anchor="ms")
+    d.text((82, 218), "Download Manager", font=sub_font, fill=INK_SOFT, anchor="ms")
+    canvas.save(path, format="BMP")
+
+
+def draw_wix_banner(path: Path) -> None:
+    """493x58, the strip across the top of MSI dialogs."""
+    canvas = _cream_canvas(493, 58)
+    mark = draw_mark(40)
+    canvas.paste(mark, (493 - 40 - 14, (58 - 40) // 2), mark)
+    canvas.save(path, format="BMP")
+
+
+def draw_wix_dialog(path: Path) -> None:
+    """493x312, the welcome/finish background. Art stays in the left 164px gutter the MSI
+    text layout leaves free; the rest matches the dialog body."""
+    canvas = Image.new("RGB", (493, 312), (255, 255, 255))
+    d = ImageDraw.Draw(canvas)
+    d.rectangle([0, 0, 164, 312], fill=CREAM)
+    mark = draw_mark(96)
+    canvas.paste(mark, ((164 - 96) // 2, 52), mark)
+    title_font = load_font(True, 24)
+    sub_font = load_font(False, 13)
+    d.text((82, 196), "Sandwich", font=title_font, fill=INK, anchor="ms")
+    d.text((82, 218), "Download Manager", font=sub_font, fill=INK_SOFT, anchor="ms")
+    canvas.save(path, format="BMP")
+
+
 def main() -> None:
     icons = ROOT / "apps" / "desktop" / "icons"
     extension = ROOT / "extension"
@@ -177,6 +232,17 @@ def main() -> None:
     print(f"wrote {assets / 'logo.png'}  ({lockup.width}x{lockup.height})")
     draw_mark(512).save(assets / "mark.png")
     print(f"wrote {assets / 'mark.png'}")
+
+    installer = ROOT / "apps" / "desktop" / "installer"
+    installer.mkdir(parents=True, exist_ok=True)
+    for name, draw in (
+        ("nsis-header.bmp", draw_nsis_header),
+        ("nsis-sidebar.bmp", draw_nsis_sidebar),
+        ("wix-banner.bmp", draw_wix_banner),
+        ("wix-dialog.bmp", draw_wix_dialog),
+    ):
+        draw(installer / name)
+        print(f"wrote {installer / name}")
 
 
 if __name__ == "__main__":
