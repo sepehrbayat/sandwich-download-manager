@@ -11,15 +11,26 @@ after a trial. Sandwich is the same idea without the licence: segmented download
 resume, and a queue that is actually pleasant to look at — free permanently, source open,
 no subscription and no nag screens.
 
-> **Status: early.** Version 0.1 runs, downloads, and has handled multi-gigabyte transfers,
-> but it is not yet signed and has been tested by very few people. Expect rough edges.
+> **Status: early.** Version 0.3 runs, downloads, updates itself over signed artifacts, and
+> has handled multi-gigabyte transfers — but installers are not yet Authenticode-signed and
+> few people have tested it. Expect rough edges.
 
 ## What it does today
 
 - **Segmented downloads** — each file is fetched over several connections at once
 - **Pause, resume and cancel** that survive closing the app, losing the network, or a crash
-- **A live segment map** — the progress bar shows which pieces of the file have actually
-  landed, not just an estimate
+- **A progress bar that assembles sandwiches** — cells fill left to right from real byte
+  progress, each with its own filling, and the cell where bytes are landing is the one that
+  pulses
+- **Completion that says so** — a toast with *Open* / *Show in folder*, a native Windows
+  notification when the window is in the background, and a straight answer if the file has
+  since been moved or deleted
+- **Self-update** — installed copies check the latest release, verify its cryptographic
+  signature against a key baked into the app, and restart into the new version with the
+  queue intact
+- **Dated history** — sort by newest with Today / Yesterday / This week shelves, filter by
+  period
+- **Five themes** — the canvas changes, the sandwich doesn't; every pairing passes WCAG AA
 - **Clipboard capture** — copy a link and Sandwich offers to fetch it
 - **Categories** — downloads grouped by state and file type, with live counts
 - **Keyboard and screen-reader support** throughout
@@ -34,8 +45,9 @@ Being straight about this, because these are the reasons you might stay with IDM
 - **No scheduler or bandwidth limiting.**
 - **No video capture from streaming sites.** A deliberate exclusion, not an oversight.
 - **Windows only.** The core is portable; macOS and Linux come after Windows is solid.
-- **Not code-signed**, so Windows SmartScreen will warn on first run. Choose
-  *More info → Run anyway*. See [SIGNING.md](SIGNING.md) for why, and what would change it.
+- **Installers are not Authenticode-signed**, so Windows SmartScreen warns on first run.
+  Choose *More info → Run anyway*. Updates delivered through the app **are** signed and
+  verified. See [SIGNING.md](SIGNING.md) for the full picture.
 
 ## Browser extension
 
@@ -51,8 +63,7 @@ unpacked:
 
    ```
    cd extension
-   .
-egister-host.ps1 -ChromeExtensionId <the id from step 2>
+   .\register-host.ps1 -ChromeExtensionId <the id from step 2>
    ```
 
 Downloads larger than 1 MB are then handed to Sandwich automatically, and any link can be
@@ -70,10 +81,13 @@ Requires [Rust](https://rustup.rs) and Node.js.
 
 ```
 cargo test --workspace
-npx @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json
+npx @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json --config apps/desktop/tauri.keyless.conf.json
 ```
 
-Installers are written to `target/release/bundle/`.
+Installers are written to `target/release/bundle/`. The `keyless` overlay skips the updater
+artifacts: with an update public key in the config, Tauri refuses to build them unsigned, and
+only the release machine holds the private key (see [SIGNING.md](SIGNING.md)). Your build is
+a working Sandwich in every other respect.
 
 To look at the interface without building the app:
 
@@ -87,8 +101,9 @@ then open <http://127.0.0.1:4317/index.html?fixture>.
 
 | Crate | Role |
 |---|---|
-| `apps/desktop` | Tauri application — window, commands, queue polling |
+| `apps/desktop` | Tauri application — window, commands, queue polling, update checks |
 | `packages/aria2-client` | Supervises the transfer engine and speaks JSON-RPC to it |
+| `packages/browser-host` | Native messaging bridge the browser extension talks to |
 | `packages/download-policy` | Decides what is safe to fetch and safe to write |
 | `src/` | Interface: plain HTML, CSS and ES modules, no framework |
 
