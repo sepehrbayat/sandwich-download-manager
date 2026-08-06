@@ -1,6 +1,38 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { describeError, formatBytes, formatEta, progressPercent, sourceHost, statusLabels } from "../../src/formatters.js";
+import { describeError, formatBytes, formatEta, progressPercent, sourceHost, SPEED_UNITS, speedLimitBytes, speedLimitParts, statusLabels } from "../../src/formatters.js";
+
+test("a speed limit converts to bytes per second, and nonsense means no limit", () => {
+  assert.equal(speedLimitBytes(2, SPEED_UNITS.MB), 2097152);
+  assert.equal(speedLimitBytes(500, SPEED_UNITS.KB), 512000);
+  assert.equal(speedLimitBytes(3, SPEED_UNITS.GB), 3221225472);
+
+  // Anything unusable has to read as "unlimited", never as a near-zero throttle: a 1 B/s
+  // ceiling is indistinguishable from a download that has broken.
+  assert.equal(speedLimitBytes(0, SPEED_UNITS.MB), 0);
+  assert.equal(speedLimitBytes(-5, SPEED_UNITS.MB), 0);
+  assert.equal(speedLimitBytes("", SPEED_UNITS.MB), 0);
+  assert.equal(speedLimitBytes(Number.NaN, SPEED_UNITS.MB), 0);
+});
+
+test("a stored limit comes back as the number the user typed", () => {
+  // 2 MB/s must not reappear as 2048 KB/s.
+  assert.deepEqual(speedLimitParts(2097152), { amount: 2, unitBytes: SPEED_UNITS.MB });
+  // Not a whole number of megabytes, so kilobytes is the honest unit.
+  assert.deepEqual(speedLimitParts(512000), { amount: 500, unitBytes: SPEED_UNITS.KB });
+  // A whole number of gigabytes is also a whole number of megabytes and kilobytes; the
+  // largest unit has to win, or 1 GB/s would come back as 1024 MB/s.
+  assert.deepEqual(speedLimitParts(1073741824), { amount: 1, unitBytes: SPEED_UNITS.GB });
+  // One megabyte short of a gigabyte still belongs in megabytes.
+  assert.deepEqual(speedLimitParts(1072693248), { amount: 1023, unitBytes: SPEED_UNITS.MB });
+  // Round trip through both directions leaves the value untouched.
+  for (const bytes of [1024, 512000, 1048576, 2097152, 15728640, 1073741824]) {
+    const { amount, unitBytes } = speedLimitParts(bytes);
+    assert.equal(speedLimitBytes(amount, unitBytes), bytes);
+  }
+  // An absent limit still yields a sane starting point for the controls.
+  assert.deepEqual(speedLimitParts(0), { amount: 1, unitBytes: SPEED_UNITS.MB });
+});
 
 test("formats transfer metrics without misleading invalid values", () => {
   assert.equal(formatBytes(1536), "1.5 KB");

@@ -268,12 +268,32 @@ fn load_settings(state: State<'_, AppState>) -> settings::Settings {
     settings::load(&state.config_dir)
 }
 
+/// Pushes the overall download ceiling to the running engine.
+///
+/// Sent over RPC rather than baked into the launch arguments because aria2 takes it live: a
+/// new ceiling reaches transfers that are already running, so changing the limit never means
+/// restarting the engine and interrupting the queue to do it. Zero is aria2's own word for
+/// "no limit", so switching the limit off needs no special case here.
+///
+/// Best-effort, like `apply_schedule`. The durable copy is the settings file, and the only
+/// way this call fails is an engine that cannot be reached — a state that already has its own
+/// banner across the top of the window.
+async fn apply_speed_limit(engine: &Aria2, bytes_per_second: u64) {
+    if let Err(error) = engine
+        .change_global_option("max-overall-download-limit", &bytes_per_second.to_string())
+        .await
+    {
+        eprintln!("could not apply the download speed limit: {error}");
+    }
+}
+
 #[tauri::command]
 async fn save_settings(
     state: State<'_, AppState>,
     settings: settings::Settings,
 ) -> Result<ScheduleStatus, String> {
     let normalized = settings.schedule.normalized();
+    let speed_limit = settings.speed_limit_bytes;
     settings::save(
         &state.config_dir,
         &settings::Settings {
@@ -289,6 +309,7 @@ async fn save_settings(
     // "starts in one minute" should not watch a still queue for twenty seconds wondering
     // whether the setting took.
     if let Some(engine) = state.engine.as_ref() {
+        apply_speed_limit(engine, speed_limit).await;
         apply_schedule(engine, &state.schedule, &state.held).await;
     }
     Ok(schedule_snapshot(&state.schedule, &state.held))
@@ -875,7 +896,8 @@ fn main() {
             let held = Arc::new(Mutex::new(HeldStore::load(&data_dir)));
             // The window is read once here and kept in memory; the settings file stays the
             // durable copy, but the ticker and the poller must not go to disk to consult it.
-            let schedule = Arc::new(Mutex::new(settings::load(&data_dir).schedule.normalized()));
+            let stored = settings::load(&data_dir);
+            let schedule = Arc::new(Mutex::new(stored.schedule.normalized()));
             if let Some(engine) = engine.as_ref() {
                 // Trim both sidecars to what the engine still knows, so they track the queue
                 // instead of growing forever.
@@ -898,6 +920,10 @@ fn main() {
                 // it. A launch at three in the afternoon with an overnight schedule must not
                 // spend twenty seconds downloading first.
                 tauri::async_runtime::block_on(apply_schedule(engine, &schedule, &held));
+                // The engine comes up with aria2's defaults rather than the user's, so a
+                // ceiling set last week has to be replayed before the first byte moves.
+                let ceiling = stored.speed_limit_bytes;
+                tauri::async_runtime::block_on(apply_speed_limit(engine, ceiling));
                 spawn_schedule_ticker(engine.clone(), schedule.clone(), held.clone());
                 spawn_progress_poller(
                     handle.clone(),

@@ -40,6 +40,39 @@ export function orderedCells(capacity, completed, total) {
   return { full, partial: full >= capacity ? 0 : exact - full };
 }
 
+/** The units the speed-limit control offers, as bytes per second. */
+export const SPEED_UNITS = { KB: 1024, MB: 1024 * 1024, GB: 1024 * 1024 * 1024 };
+
+/**
+ * The bytes-per-second ceiling an amount-and-unit pair describes, or 0 for "no limit".
+ *
+ * Zero is aria2's own convention for unlimited, so a switched-off limit and a nonsense value
+ * both land on the same honest answer instead of on an accidental 1 B/s throttle — which
+ * would look exactly like a broken download rather than a misconfigured one.
+ */
+export function speedLimitBytes(amount, unitBytes) {
+  const value = Number(amount);
+  const unit = Number(unitBytes);
+  if (!Number.isFinite(value) || !Number.isFinite(unit) || value <= 0 || unit <= 0) return 0;
+  return Math.round(value * unit);
+}
+
+/**
+ * The reverse: the tidiest amount-and-unit pair for a stored ceiling.
+ *
+ * Takes the largest unit that divides evenly, so a 2 MB/s limit comes back as "2 MB/s" and
+ * not "2048 KB/s" — the number the user typed, not an equivalent one. Largest first matters:
+ * every gigabyte is also a whole number of megabytes, so the order of this list is the rule.
+ */
+export function speedLimitParts(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value <= 0) return { amount: 1, unitBytes: SPEED_UNITS.MB };
+  const unitBytes =
+    [SPEED_UNITS.GB, SPEED_UNITS.MB, SPEED_UNITS.KB].find((unit) => value % unit === 0)
+    ?? SPEED_UNITS.KB;
+  return { amount: Math.max(1, Math.round(value / unitBytes)), unitBytes };
+}
+
 export const statusLabels = {
   queued: "Queued",
   active: "Downloading",

@@ -21,6 +21,13 @@ pub struct Settings {
     /// settings file, in which case the default schedule (off) applies — upgrading must never
     /// switch a restriction on behind the user's back.
     pub schedule: crate::schedule::Schedule,
+    /// Ceiling on the combined speed of every transfer, in bytes per second.
+    ///
+    /// Zero is aria2's own convention for "no limit", which is also what a derived `Default`
+    /// gives an absent field — so a settings file written before this existed upgrades to
+    /// unlimited rather than to an accidental throttle. Same rule as the schedule above:
+    /// an upgrade never switches a restriction on by itself.
+    pub speed_limit_bytes: u64,
 }
 
 fn settings_path(config_dir: &Path) -> PathBuf {
@@ -72,12 +79,14 @@ mod tests {
                 days: [true, true, true, true, true, false, false],
                 max_concurrent: 3,
             },
+            speed_limit_bytes: 2 * 1024 * 1024,
         };
         save(&dir, &stored).unwrap();
         let read_back = load(&dir);
         assert_eq!(read_back.destination, "D:\\Downloads");
         assert!(read_back.organize_by_type);
         assert_eq!(read_back.schedule, stored.schedule);
+        assert_eq!(read_back.speed_limit_bytes, 2 * 1024 * 1024);
 
         // Corrupt content must not panic or block startup.
         std::fs::write(settings_path(&dir), b"{ not json").unwrap();
@@ -104,6 +113,9 @@ mod tests {
         assert_eq!(loaded.destination, "D:\\Downloads");
         assert_eq!(loaded.theme, "toast");
         assert!(!loaded.schedule.enabled);
+        // Same promise for the speed ceiling: an absent field means unlimited, never a
+        // throttle the user never asked for and would have no idea how to find.
+        assert_eq!(loaded.speed_limit_bytes, 0);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

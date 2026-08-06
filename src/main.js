@@ -1,6 +1,7 @@
 import {
   WEEKDAYS, clockToMinutes, dateGroup, describeError, formatBytes, formatEta, minutesToClock,
-  orderedCells, progressPercent, scheduleSummary, sourceHost, statusLabel
+  orderedCells, progressPercent, scheduleSummary, sourceHost, speedLimitBytes, speedLimitParts,
+  statusLabel
 } from "./formatters.js";
 import { confirmDialog, messageDialog, toast } from "./feedback.js";
 
@@ -66,7 +67,14 @@ const elements = {
   scheduleDetail: document.querySelector("#schedule-detail"),
   scheduleError: document.querySelector("#schedule-error"),
   schedulePill: document.querySelector("#schedule-pill"),
-  schedulePillText: document.querySelector("#schedule-pill-text")
+  schedulePillText: document.querySelector("#schedule-pill-text"),
+  openSettings: document.querySelector("#open-settings"),
+  closeSettings: document.querySelector("#close-settings"),
+  settingsPanel: document.querySelector("#settings"),
+  limitSpeed: document.querySelector("#limit-speed"),
+  speedLimitControls: document.querySelector("#speed-limit-controls"),
+  speedLimit: document.querySelector("#speed-limit"),
+  speedUnit: document.querySelector("#speed-unit")
 };
 
 /* ── Theme ──────────────────────────────────────────────────────────────── */
@@ -690,13 +698,34 @@ elements.form.addEventListener("submit", async (event) => {
 
 let dismissSettingsToast = null;
 
+/* ── Speed limit ────────────────────────────────────────────────────────── */
+
+/** Zero when the limit is switched off, which is aria2's own word for unlimited. */
+function currentSpeedLimit() {
+  if (!elements.limitSpeed.checked) return 0;
+  return speedLimitBytes(elements.speedLimit.value, elements.speedUnit.value);
+}
+
+/** Paints a stored ceiling back into the two controls that describe it. */
+function showSpeedLimit(bytes) {
+  const limited = Number(bytes) > 0;
+  elements.limitSpeed.checked = limited;
+  elements.speedLimitControls.hidden = !limited;
+  const { amount, unitBytes } = speedLimitParts(bytes);
+  elements.speedLimit.value = String(amount);
+  elements.speedUnit.value = String(unitBytes);
+}
+
 async function persistSettings() {
   try {
     // The backend applies the schedule as part of saving and hands back what that did, so the
     // panel can say "downloads start at 02:00" from the same round trip rather than guessing
     // and being corrected a moment later.
     const status = await bridge.invoke("save_settings", {
-      settings: { destination, organize_by_type: elements.organize.checked, theme, schedule }
+      settings: {
+        destination, organize_by_type: elements.organize.checked, theme, schedule,
+        speed_limit_bytes: currentSpeedLimit()
+      }
     });
     if (status) showScheduleStatus(status);
     // One quiet receipt, replaced rather than stacked when settings change in a burst.
@@ -842,6 +871,37 @@ elements.closeSchedule.addEventListener("click", () => {
   elements.schedulePanel.hidden = true;
   elements.openSchedule.focus();
 });
+
+elements.openSettings.addEventListener("click", () => {
+  const opening = elements.settingsPanel.hidden;
+  elements.settingsPanel.hidden = !opening;
+  elements.openSettings.setAttribute("aria-expanded", String(opening));
+  if (opening) elements.limitSpeed.focus();
+});
+elements.closeSettings.addEventListener("click", () => {
+  elements.settingsPanel.hidden = true;
+  elements.openSettings.setAttribute("aria-expanded", "false");
+  elements.openSettings.focus();
+});
+
+elements.limitSpeed.addEventListener("change", () => {
+  elements.speedLimitControls.hidden = !elements.limitSpeed.checked;
+  // Ticking the box with focus still on it leaves the controls it just revealed unannounced;
+  // moving to the amount is both the next thing to do and the thing worth hearing.
+  if (elements.limitSpeed.checked) elements.speedLimit.focus();
+  persistSettings();
+});
+
+// `change` rather than `input`: a number field fires on every keystroke, so typing 50 would
+// travel through the engine as a 5 B/s throttle on the way. Commit on blur or Enter instead.
+for (const control of [elements.speedLimit, elements.speedUnit]) {
+  control.addEventListener("change", () => {
+    // Show what was actually stored, so a nonsensical entry corrects itself in front of the
+    // user rather than leaving the field disagreeing with the engine.
+    if (elements.limitSpeed.checked) showSpeedLimit(currentSpeedLimit());
+    persistSettings();
+  });
+}
 
 async function forEachVisible(action) {
   const targets = downloads.filter((item) => matchesFilter(item, filter));
@@ -1025,6 +1085,8 @@ async function restoreSettings() {
     // A settings file written before scheduling existed has no schedule at all; the defaults
     // already loaded stand in, and they are the ones that restrict nothing.
     if (stored?.schedule) schedule = { ...schedule, ...stored.schedule };
+    // Same for the ceiling: absent means unlimited, which is what the controls start as.
+    showSpeedLimit(stored?.speed_limit_bytes ?? 0);
   } catch {
     // First run, or preferences unavailable: the defaults in the markup already apply.
   }

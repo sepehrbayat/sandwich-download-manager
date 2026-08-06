@@ -412,6 +412,11 @@ input[type="url"]:focus { border-color: var(--crust); outline: none; }
 .time-row { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 4px; }
 .time-field { display: flex; align-items: center; gap: 8px; }
 
+/* The amount and its unit read as one control, so they sit together rather than as two
+   fields that happen to be adjacent. Everything else here is already carried by the shared
+   number and select styles below. */
+.limit-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+
 input[type="time"], input[type="number"] {
   min-height: 32px;
   padding: 4px 10px;

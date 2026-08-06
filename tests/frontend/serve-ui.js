@@ -19,7 +19,8 @@ createServer(async (request, response) => {
       // before the page loads and exercise the real "restore on startup" path.
       window.__sandwichSettings ??= {
         destination: "", organize_by_type: false, theme: "",
-        schedule: { enabled: false, start_minute: 120, end_minute: 420, days: [true, true, true, true, true, true, true], max_concurrent: 5 }
+        schedule: { enabled: false, start_minute: 120, end_minute: 420, days: [true, true, true, true, true, true, true], max_concurrent: 5 },
+        speed_limit_bytes: 0
       };
       window.__sandwichScheduleStatus ??= { enabled: false, open: true, waiting: 0 };
       window.__SANDWICH_TEST_BRIDGE__ = {
