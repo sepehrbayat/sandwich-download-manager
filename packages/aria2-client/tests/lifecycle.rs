@@ -186,3 +186,53 @@ async fn cancel_stops_a_transfer() {
 
     let _ = std::fs::remove_dir_all(&temp);
 }
+
+#[tokio::test]
+async fn a_cancel_reaches_disk_before_any_shutdown() {
+    // The engine only ever dies by Job Object kill - there is no graceful exit in
+    // production. So a cancel must be IN THE SESSION FILE the moment the call returns:
+    // waiting for the 10-second periodic save left a window where killing the app undid
+    // the cancel, and the download came back from the dead on the next launch, still
+    // transferring. This test reads the file straight after cancel(), no shutdown, no
+    // waiting, exactly like a kill at the worst moment.
+    if !aria2_available() {
+        eprintln!("skipping: aria2c not installed");
+        return;
+    }
+    let payload: Vec<u8> = (0..=255u8).cycle().take(2_000_000).collect();
+    let url = slow_range_server(payload);
+    let temp =
+        std::env::temp_dir().join(format!("sandwich-aria2-cancelflush-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&temp);
+    let _ = std::fs::create_dir_all(&temp);
+
+    let engine = Aria2::start(&temp).await.expect("engine should start");
+    let gid = engine
+        .add_uri(&url, &temp, "payload.bin")
+        .await
+        .expect("download should queue");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Baseline: put the active download IN the file first. Without this the test passes
+    // vacuously before the first periodic save, fix or no fix, because an absent session
+    // file contains nothing.
+    engine.save_session().await;
+    let baseline = std::fs::read_to_string(temp.join("sandwich.session")).unwrap_or_default();
+    assert!(
+        baseline.contains("payload.bin"),
+        "baseline save should record the active download"
+    );
+
+    engine
+        .cancel(&gid)
+        .await
+        .expect("cancel should be accepted");
+
+    let session = std::fs::read_to_string(temp.join("sandwich.session")).unwrap_or_default();
+    assert!(
+        !session.contains("payload.bin"),
+        "a killed process would resurrect this cancelled download; session still holds it:\n{session}"
+    );
+
+    let _ = std::fs::remove_dir_all(&temp);
+}
