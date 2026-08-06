@@ -3284,9 +3284,10 @@ dependencies = [
 
 [[package]]
 name = "sandwich-desktop"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "aria2-client",
+ "chrono",
  "download-policy",
  "serde",
  "serde_json",

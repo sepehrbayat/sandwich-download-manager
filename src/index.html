@@ -46,7 +46,17 @@
         <span class="throughput-value" id="throughput-value">0 B/s</span>
       </div>
 
+      <!-- A queue that has stopped itself has to say so where the eye already is. Without
+           this, a schedule looks exactly like a download manager that has quietly broken. -->
+      <button class="schedule-pill" id="schedule-pill" type="button" hidden>
+        <span class="pill-icon" aria-hidden="true">◷</span>
+        <span id="schedule-pill-text"></span>
+      </button>
+
       <div class="titlebar-actions">
+        <button class="secondary" id="open-schedule" type="button">
+          <span aria-hidden="true">◷</span> Schedule
+        </button>
         <button class="primary" id="open-add" type="button">
           <span aria-hidden="true">+</span> Add download
         </button>
@@ -155,6 +165,59 @@
             <p class="help" id="url-help">Files save to the folder above. HTTP and HTTPS links are checked before the transfer starts.</p>
             <p class="error" id="form-error" role="alert" hidden></p>
           </form>
+        </section>
+
+        <!-- Schedule panel: when downloads may run, and how many at once -->
+        <section class="panel schedule-panel" id="schedule" aria-labelledby="schedule-title" hidden>
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Schedule</p>
+              <h2 id="schedule-title">When downloads may run</h2>
+            </div>
+            <button class="quiet" id="close-schedule" type="button">Close</button>
+          </div>
+
+          <p class="schedule-state" id="schedule-state" role="status" aria-live="polite">
+            <span class="schedule-headline" id="schedule-headline"></span>
+            <span class="schedule-detail" id="schedule-detail"></span>
+          </p>
+
+          <label class="check-row">
+            <input id="schedule-enabled" type="checkbox" />
+            Only download between set hours
+          </label>
+
+          <fieldset class="schedule-window" id="schedule-window">
+            <legend class="sr-only">Download window</legend>
+            <div class="time-row">
+              <span class="time-field">
+                <label for="schedule-start">From</label>
+                <input id="schedule-start" type="time" />
+              </span>
+              <span class="time-field">
+                <label for="schedule-end">Until</label>
+                <input id="schedule-end" type="time" />
+              </span>
+            </div>
+            <p class="help">
+              An end earlier than the start runs overnight: 22:00 until 06:00 covers the night
+              of each day ticked below, finishing the next morning.
+            </p>
+
+            <span class="field-label" id="schedule-days-label">Days</span>
+            <div class="day-picker" role="group" aria-labelledby="schedule-days-label" id="schedule-days"></div>
+            <p class="help" id="schedule-days-help">Each day is the day the window opens on.</p>
+            <p class="error" id="schedule-error" role="alert" hidden></p>
+          </fieldset>
+
+          <div class="concurrency-row">
+            <label for="schedule-concurrent">Download at once</label>
+            <input id="schedule-concurrent" type="number" min="1" max="16" step="1" inputmode="numeric" />
+            <p class="help">
+              The rest wait their turn. Four or five is usually fastest — beyond that they only
+              divide the same connection between them.
+            </p>
+          </div>
         </section>
 
         <aside id="clipboard-offer" class="clipboard-offer" aria-labelledby="clipboard-title" hidden>

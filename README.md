@@ -11,9 +11,9 @@ after a trial. Sandwich is the same idea without the licence: segmented download
 resume, and a queue that is actually pleasant to look at — free permanently, source open,
 no subscription and no nag screens.
 
-> **Status: early.** Version 0.3 runs, downloads, updates itself over signed artifacts, and
-> has handled multi-gigabyte transfers — but installers are not yet Authenticode-signed and
-> few people have tested it. Expect rough edges.
+> **Status: early.** Version 0.4 runs, downloads, keeps to a schedule, updates itself over
+> signed artifacts, and has handled multi-gigabyte transfers — but installers are not yet
+> Authenticode-signed and few people have tested it. Expect rough edges.
 
 ## What it does today
 
@@ -25,6 +25,10 @@ no subscription and no nag screens.
 - **Completion that says so** — a toast with *Open* / *Show in folder*, a native Windows
   notification when the window is in the background, and a straight answer if the file has
   since been moved or deleted
+- **Scheduled downloading** — set the hours transfers may run (`22:00`–`06:00`, weekdays only,
+  whatever suits your connection) and how many run at once. Outside the window the queue holds
+  itself, says so in the title bar, and starts on its own at the hour you named. A download you
+  start by hand is still yours to start
 - **Self-update** — installed copies check the latest release, verify its cryptographic
   signature against a key baked into the app, and restart into the new version with the
   queue intact
@@ -42,7 +46,8 @@ no subscription and no nag screens.
 
 Being straight about this, because these are the reasons you might stay with IDM:
 
-- **No scheduler or bandwidth limiting.**
+- **No bandwidth limiting.** Downloads can be confined to certain hours, but not to a certain
+  speed, so a transfer inside the window still takes the whole pipe.
 - **No video capture from streaming sites.** A deliberate exclusion, not an oversight.
 - **Windows only.** The core is portable; macOS and Linux come after Windows is solid.
 - **Installers are not Authenticode-signed**, so Windows SmartScreen warns on first run.
@@ -106,6 +111,13 @@ then open <http://127.0.0.1:4317/index.html?fixture>.
 | `packages/browser-host` | Native messaging bridge the browser extension talks to |
 | `packages/download-policy` | Decides what is safe to fetch and safe to write |
 | `src/` | Interface: plain HTML, CSS and ES modules, no framework |
+
+The schedule lives in `apps/desktop/src/schedule.rs`. Its window arithmetic is pure — it is
+handed the instant to judge rather than reading the clock — so overnight windows, unticked
+days and daylight-saving edges are all testable without waiting for 2am. The engine reports a
+scheduled pause and an abandoned one identically, so a sidecar file records which pauses were
+Sandwich's own: reopening the window resumes those and nothing else, and a download the user
+starts by hand is exempt until the window next opens.
 
 Transfers are performed by [aria2](https://aria2.github.io/), which has handled proxies,
 redirects, retries and resume for fifteen years. Sandwich deliberately keeps one thing to

@@ -17,6 +17,10 @@ pub struct Settings {
     /// Canvas theme name. Empty means "never chosen", which lets the UI follow the OS
     /// light/dark preference until the user picks one; a stored choice always wins.
     pub theme: String,
+    /// When downloads are allowed to run, and how many at a time. Absent from an older
+    /// settings file, in which case the default schedule (off) applies — upgrading must never
+    /// switch a restriction on behind the user's back.
+    pub schedule: crate::schedule::Schedule,
 }
 
 fn settings_path(config_dir: &Path) -> PathBuf {
@@ -61,15 +65,45 @@ mod tests {
             destination: "D:\\Downloads".into(),
             organize_by_type: true,
             theme: "rye".into(),
+            schedule: crate::schedule::Schedule {
+                enabled: true,
+                start_minute: 22 * 60,
+                end_minute: 6 * 60,
+                days: [true, true, true, true, true, false, false],
+                max_concurrent: 3,
+            },
         };
         save(&dir, &stored).unwrap();
         let read_back = load(&dir);
         assert_eq!(read_back.destination, "D:\\Downloads");
         assert!(read_back.organize_by_type);
+        assert_eq!(read_back.schedule, stored.schedule);
 
         // Corrupt content must not panic or block startup.
         std::fs::write(settings_path(&dir), b"{ not json").unwrap();
         assert_eq!(load(&dir).destination, "");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_settings_file_from_before_scheduling_keeps_its_answers_and_gains_a_disabled_schedule() {
+        // Upgrading must not switch a download restriction on behind the user's back, and it
+        // must not throw away the preferences they already set to do it.
+        let dir =
+            std::env::temp_dir().join(format!("sandwich-settings-old-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            settings_path(&dir),
+            br#"{"destination":"D:\\Downloads","organize_by_type":true,"theme":"toast"}"#,
+        )
+        .unwrap();
+
+        let loaded = load(&dir);
+        assert_eq!(loaded.destination, "D:\\Downloads");
+        assert_eq!(loaded.theme, "toast");
+        assert!(!loaded.schedule.enabled);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

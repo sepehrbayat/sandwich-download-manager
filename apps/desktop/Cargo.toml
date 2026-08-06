@@ -1,6 +1,6 @@
 [package]
 name = "sandwich-desktop"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 license = "GPL-3.0-only"
 
@@ -10,6 +10,9 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 download-policy = { path = "../../packages/download-policy" }
 aria2-client = { path = "../../packages/aria2-client" }
+# The download window is written on the local wall clock, so the schedule needs a real
+# timezone — including the DST transitions std has no notion of.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }

@@ -430,6 +430,33 @@ impl Aria2 {
         result
     }
 
+    /// Changes an engine-wide option on the running process.
+    ///
+    /// Used for `max-concurrent-downloads`, which the schedule owns. Note that aria2 applies a
+    /// *lowered* limit only to transfers that have not started yet — already-active ones keep
+    /// running past the new cap until something forces a recalculation. Callers that need the
+    /// limit honoured immediately have to nudge the excess themselves; see `renegotiate`.
+    pub async fn change_global_option(&self, key: &str, value: &str) -> Result<(), Aria2Error> {
+        self.call(
+            "aria2.changeGlobalOption",
+            serde_json::json!([{ key: value }]),
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// Puts a running transfer back through the engine's queueing decision.
+    ///
+    /// aria2 re-evaluates `max-concurrent-downloads` when a transfer is unpaused, and only
+    /// then. A pause immediately followed by an unpause therefore demotes a download that is
+    /// over a freshly lowered cap to waiting, while leaving it queued and resumable — which is
+    /// what "run 2 at a time" has to mean for downloads that were already running when the
+    /// setting changed.
+    pub async fn renegotiate(&self, gid: &str) -> Result<(), Aria2Error> {
+        self.pause(gid).await?;
+        self.resume(gid).await
+    }
+
     pub async fn status(&self, gid: &str) -> Result<Aria2Status, Aria2Error> {
         let result = self
             .call("aria2.tellStatus", serde_json::json!([gid]))

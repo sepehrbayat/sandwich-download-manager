@@ -51,6 +51,129 @@ export const statusLabels = {
 };
 
 /**
+ * What a download's state should be called on its card.
+ *
+ * The engine reports a scheduled transfer and an abandoned one identically — both are simply
+ * "paused" — so a queue held for the night would otherwise read as one somebody stopped and
+ * forgot about, and the obvious fix would look like clicking Resume on every card.
+ */
+export function statusLabel(item) {
+  if (item?.scheduled && item.status === "paused") return "Waiting for the download window";
+  return statusLabels[item?.status] ?? item?.status ?? "";
+}
+
+/* ── The download window ─────────────────────────────────────────────────── */
+
+/** Monday first, matching the order the schedule stores its days in. */
+export const WEEKDAYS = [
+  { short: "Mon", long: "Monday" },
+  { short: "Tue", long: "Tuesday" },
+  { short: "Wed", long: "Wednesday" },
+  { short: "Thu", long: "Thursday" },
+  { short: "Fri", long: "Friday" },
+  { short: "Sat", long: "Saturday" },
+  { short: "Sun", long: "Sunday" }
+];
+
+const MINUTES_PER_DAY = 24 * 60;
+
+/** Minutes since midnight as the "HH:MM" a time input speaks. */
+export function minutesToClock(minutes) {
+  const value = Number(minutes);
+  const safe = Number.isFinite(value) ? Math.min(MINUTES_PER_DAY - 1, Math.max(0, Math.round(value))) : 0;
+  return `${String(Math.floor(safe / 60)).padStart(2, "0")}:${String(safe % 60).padStart(2, "0")}`;
+}
+
+/**
+ * "HH:MM" back to minutes since midnight, or null if it is not a time.
+ *
+ * Null rather than a fallback number on purpose: a time input can legitimately be empty
+ * mid-edit, and silently reading that as midnight would move the user's window while they
+ * were still typing it.
+ */
+export function clockToMinutes(value) {
+  const match = /^(\d{1,2}):([0-5]\d)$/.exec(String(value ?? "").trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  if (hours > 23) return null;
+  return hours * 60 + Number(match[2]);
+}
+
+/**
+ * Which calendar day an upcoming instant lands on, said the way a person would.
+ *
+ * Compared by local midnight rather than by elapsed hours: at 23:00, something happening in
+ * three hours is "tomorrow", not "today", and the difference is exactly what makes a schedule
+ * message trustworthy.
+ */
+export function relativeDay(epochSeconds, nowMs) {
+  const then = new Date(epochSeconds * 1000);
+  const now = new Date(nowMs);
+  const startOf = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const days = Math.round((startOf(then) - startOf(now)) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "tomorrow";
+  if (days < 7) return then.toLocaleDateString(undefined, { weekday: "long" });
+  return then.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+export function formatClockTime(epochSeconds) {
+  return new Date(epochSeconds * 1000)
+    .toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+/**
+ * A window edge as a phrase that reads correctly after a verb: "downloads start **at 02:00**",
+ * "downloads pause **tomorrow at 02:00**".
+ */
+export function formatWindowMoment(epochSeconds, nowMs) {
+  if (!epochSeconds) return "";
+  const day = relativeDay(epochSeconds, nowMs);
+  const time = formatClockTime(epochSeconds);
+  return day === "today" ? `at ${time}` : `${day} at ${time}`;
+}
+
+/**
+ * The schedule explained in one headline and one detail line, shared by the settings panel and
+ * the title-bar indicator.
+ *
+ * A queue that has stopped itself must always say so somewhere visible. A download manager
+ * sitting idle with no explanation is indistinguishable from a broken one, and the first thing
+ * a user does about it is uninstall.
+ */
+export function scheduleSummary(status, nowMs) {
+  if (!status?.enabled) {
+    return { state: "off", headline: "Downloads run at any time", detail: "", pill: "" };
+  }
+  const moment = formatWindowMoment(status.next_change_at, nowMs);
+  const waiting = Number(status.waiting) || 0;
+  const queued = waiting > 0 ? ` ${waiting} download${waiting === 1 ? "" : "s"} waiting.` : "";
+
+  if (status.open) {
+    return {
+      state: "open",
+      headline: "Download window open",
+      detail: moment ? `Downloads pause ${moment}.` : "Downloads run all day on the days you ticked.",
+      pill: ""
+    };
+  }
+  if (!moment) {
+    return {
+      state: "closed",
+      headline: "Nothing will download",
+      detail: `No days are ticked, so the window never opens.${queued}`,
+      pill: "No days ticked"
+    };
+  }
+  return {
+    state: "closed",
+    headline: "Waiting for the download window",
+    detail: `Downloads start ${moment}.${queued}`,
+    pill: `Downloads start ${moment}`
+  };
+}
+
+/**
  * Which history shelf a Unix timestamp belongs on, relative to a "now" also in Unix seconds.
  * Boundaries are local midnights — "Today" means the calendar day the user is living in,
  * not the last rolling 24 hours.
