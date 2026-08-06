@@ -20,24 +20,49 @@ future updates — they verify against the public key they shipped with — and 
 is asking users to reinstall by hand. Rotating the key has the same cost; treat it as
 permanent.
 
-Release builds must sign their updater artifacts:
+## Publishing a release
+
+Releases are built by `.github/workflows/release.yml`, not by hand. The key then lives in one
+place — the `TAURI_SIGNING_PRIVATE_KEY` repository secret — instead of on whichever laptop
+happened to cut the release, and the artifact users install comes from a tagged commit built by
+a machine with no local state.
+
+To publish:
+
+1. Bump the version in `apps/desktop/tauri.conf.json`, `apps/desktop/Cargo.toml` and
+   `extension/manifest.json`, and merge that to `main`.
+2. Push a matching tag:
+
+   ```
+   git tag v0.4.0 && git push origin v0.4.0
+   ```
+
+The workflow refuses to go on if the tag disagrees with the version in the config, or if the
+signing secret is missing — both produce a release that looks fine and quietly breaks the
+update path. It runs the full test suite, builds, authors `latest.json`, writes
+`SHA256SUMS.txt`, and publishes the release with every asset attached.
+
+`workflow_dispatch` runs the same build with `dry_run` on: everything is verified and uploaded
+as a workflow artifact, and no release is published.
+
+**Every release must include a `latest.json` asset.** Installed apps poll
+`releases/latest/download/latest.json`; a release published without it makes every older
+install's update check fail until the next correct release. v0.1.1 and v0.2.0 went out without
+one — the workflow exists so that cannot happen again.
+
+### Building a signed release by hand
+
+Only needed if Actions is unavailable. Requires the private key on the local machine:
 
 ```
 # The variable takes the key file's PATH (or the key text itself). There is no _PATH variant —
 # Tauri silently ignores unknown variables and then complains the private key is missing.
 $env:TAURI_SIGNING_PRIVATE_KEY = "$env:USERPROFILE\.tauri\sandwich-updater.key"
 npx @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json
-```
-
-Then author the manifest and upload it with the release:
-
-```
 powershell -ExecutionPolicy Bypass -File tools/make-latest-json.ps1 -Version <x.y.z>
 ```
 
-**Every release must include a `latest.json` asset.** Installed apps poll
-`releases/latest/download/latest.json`; a release published without it makes every older
-install's update check fail until the next correct release.
+Then create the release and attach the installers, their `.sig` files, and `latest.json`.
 
 # Code signing (Authenticode)
 
