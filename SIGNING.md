@@ -23,7 +23,9 @@ permanent.
 Release builds must sign their updater artifacts:
 
 ```
-$env:TAURI_SIGNING_PRIVATE_KEY_PATH = "$env:USERPROFILE\.tauri\sandwich-updater.key"
+# The variable takes the key file's PATH (or the key text itself). There is no _PATH variant —
+# Tauri silently ignores unknown variables and then complains the private key is missing.
+$env:TAURI_SIGNING_PRIVATE_KEY = "$env:USERPROFILE\.tauri\sandwich-updater.key"
 npx @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json
 ```
 
