@@ -12,8 +12,24 @@ createServer(async (request, response) => {
   try {
     let content = await readFile(path);
     if (relative === "index.html" && url.searchParams.has("fixture")) {
-      const fixture = `<script>window.__SANDWICH_TEST_BRIDGE__ = {
+      const fixture = `<script>
+      // Schedule state the tests can rewrite before the UI asks for it. Kept on window rather
+      // than closed over so a spec can put the app in "window shut" without a backend.
+      // Assigned only if nothing put them there first, so a test can seed stored settings
+      // before the page loads and exercise the real "restore on startup" path.
+      window.__sandwichSettings ??= {
+        destination: "", organize_by_type: false, theme: "",
+        schedule: { enabled: false, start_minute: 120, end_minute: 420, days: [true, true, true, true, true, true, true], max_concurrent: 5 }
+      };
+      window.__sandwichScheduleStatus ??= { enabled: false, open: true, waiting: 0 };
+      window.__SANDWICH_TEST_BRIDGE__ = {
         invoke: async (command, payload) => {
+          if (command === "load_settings") return window.__sandwichSettings;
+          if (command === "save_settings") {
+            window.__sandwichSettings = payload.settings;
+            return window.__sandwichScheduleStatus;
+          }
+          if (command === "schedule_status") return window.__sandwichScheduleStatus;
           if (command === "list_downloads") return [
             { id: "active-1", filename: "ubuntu-24.04.iso", status: "active", completed_bytes: 5242880, total_bytes: 10485760, bytes_per_second: 1048576, eta_seconds: 5, connections: 8, num_pieces: 40, bitfield: "ffffe000000000000000", source_url: "https://releases.example.com/ubuntu-24.04.iso", directory: "C:\\Users\\Tester\\Downloads" },
             { id: "paused-1", filename: "album.flac", status: "paused", completed_bytes: 1048576, total_bytes: 4194304, bytes_per_second: 0, connections: 0, num_pieces: 16, bitfield: "f000", source_url: "https://music.example.com/album.flac", directory: "C:\\Users\\Tester\\Downloads" },

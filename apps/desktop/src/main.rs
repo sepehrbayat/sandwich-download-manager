@@ -1,13 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod history;
+mod schedule;
 mod settings;
 
 use aria2_client::{Aria2, Aria2Status};
+use chrono::Local;
 use download_policy::DownloadStatus;
 use history::HistoryStore;
+use schedule::{HeldStore, Schedule};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashSet,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Duration,
@@ -20,6 +24,11 @@ use tauri_plugin_opener::OpenerExt;
 /// How often the queue is refreshed from the engine. Fast enough to feel live, slow enough
 /// that a screen reader is not flooded with announcements.
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
+
+/// How often the download window is re-judged. The window's own resolution is a minute, so a
+/// twenty-second tick keeps the worst-case overshoot well under one — close enough that
+/// "downloads start at 2am" is true as written, without waking up constantly to learn nothing.
+const SCHEDULE_INTERVAL: Duration = Duration::from_secs(20);
 
 #[derive(Clone, Serialize)]
 struct Snapshot {
@@ -42,6 +51,10 @@ struct Snapshot {
     added_at: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     completed_at: Option<u64>,
+    /// Paused by the download window rather than by the user. The engine reports both as
+    /// "paused"; only Sandwich knows the difference, and the card has to say which it is or a
+    /// scheduled queue looks like one somebody stopped and forgot about.
+    scheduled: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<DownloadError>,
 }
@@ -65,6 +78,10 @@ struct AppState {
     engine: Option<Arc<Aria2>>,
     config_dir: PathBuf,
     history: Arc<Mutex<HistoryStore>>,
+    held: Arc<Mutex<HeldStore>>,
+    /// The live copy of the download window. Kept in memory as well as on disk so the ticker
+    /// and the poller do not read the settings file several times a second.
+    schedule: Arc<Mutex<Schedule>>,
 }
 
 impl AppState {
@@ -113,6 +130,7 @@ fn to_snapshot(status: &Aria2Status) -> Snapshot {
         directory: status.dir.clone(),
         added_at: None,
         completed_at: None,
+        scheduled: false,
         error: status
             .error_message
             .as_ref()
@@ -127,13 +145,22 @@ fn to_snapshot(status: &Aria2Status) -> Snapshot {
     }
 }
 
-/// Joins the sidecar timestamps onto a snapshot. `to_snapshot` stays a pure translation of
-/// engine state; time is deliberately stamped at the edges, where the store is in reach.
-fn stamped(mut snapshot: Snapshot, history: &Mutex<HistoryStore>) -> Snapshot {
+/// Joins the two sidecar stores onto a snapshot: when the download happened, and whether the
+/// schedule is the reason it is not moving. `to_snapshot` stays a pure translation of engine
+/// state; everything the engine does not itself know is deliberately added at the edges, where
+/// the stores are in reach.
+fn stamped(
+    mut snapshot: Snapshot,
+    history: &Mutex<HistoryStore>,
+    held: &Mutex<HeldStore>,
+) -> Snapshot {
     if let Ok(store) = history.lock() {
         let times = store.get(&snapshot.id);
         snapshot.added_at = times.added_at;
         snapshot.completed_at = times.completed_at;
+    }
+    if let Ok(store) = held.lock() {
+        snapshot.scheduled = store.holds(&snapshot.id);
     }
     snapshot
 }
@@ -146,10 +173,51 @@ fn derived_filename(value: &str) -> String {
         .unwrap_or_else(|| "download".to_owned())
 }
 
+/// Whether the download window currently allows transfers.
+///
+/// A poisoned lock answers "open". The schedule is a convenience; failing to read it must never
+/// be what stops someone downloading a file.
+fn window_is_open(schedule: &Mutex<Schedule>) -> bool {
+    schedule
+        .lock()
+        .map(|current| current.is_open_at(Local::now()))
+        .unwrap_or(true)
+}
+
+/// Parks a freshly queued transfer when the window is shut.
+///
+/// Without this a download added at lunchtime would start immediately and only be paused by
+/// the next tick — twenty seconds of transfer that the user explicitly asked not to happen
+/// until 2am. It also covers downloads handed over by the browser extension, which reach the
+/// engine directly and never pass through the commands above.
+async fn hold_if_closed(
+    engine: &Aria2,
+    held: &Mutex<HeldStore>,
+    schedule: &Mutex<Schedule>,
+    gid: &str,
+) -> bool {
+    if window_is_open(schedule) {
+        return false;
+    }
+    // An explicit "start this one now" outranks the window.
+    if held.lock().map(|store| store.allows(gid)).unwrap_or(false) {
+        return false;
+    }
+    if engine.pause(gid).await.is_err() {
+        return false;
+    }
+    if let Ok(mut store) = held.lock() {
+        store.hold(gid);
+    }
+    true
+}
+
 /// Shared by manual submission and clipboard confirmation so both follow one code path.
 async fn queue_download(
     engine: &Aria2,
     history: &Mutex<HistoryStore>,
+    held: &Mutex<HeldStore>,
+    schedule: &Mutex<Schedule>,
     url: String,
     destination: String,
     organize_by_type: bool,
@@ -174,11 +242,12 @@ async fn queue_download(
     if let Ok(mut store) = history.lock() {
         store.record_added(&gid);
     }
+    hold_if_closed(engine, held, schedule, &gid).await;
     let status = engine
         .status(&gid)
         .await
         .map_err(|error| error.to_string())?;
-    Ok(stamped(to_snapshot(&status), history))
+    Ok(stamped(to_snapshot(&status), history, held))
 }
 
 #[tauri::command]
@@ -190,7 +259,7 @@ async fn list_downloads(state: State<'_, AppState>) -> Result<Vec<Snapshot>, Str
         .map_err(|error| error.to_string())?;
     Ok(all
         .iter()
-        .map(|status| stamped(to_snapshot(status), &state.history))
+        .map(|status| stamped(to_snapshot(status), &state.history, &state.held))
         .collect())
 }
 
@@ -200,8 +269,61 @@ fn load_settings(state: State<'_, AppState>) -> settings::Settings {
 }
 
 #[tauri::command]
-fn save_settings(state: State<'_, AppState>, settings: settings::Settings) -> Result<(), String> {
-    settings::save(&state.config_dir, &settings).map_err(|error| error.to_string())
+async fn save_settings(
+    state: State<'_, AppState>,
+    settings: settings::Settings,
+) -> Result<ScheduleStatus, String> {
+    let normalized = settings.schedule.normalized();
+    settings::save(
+        &state.config_dir,
+        &settings::Settings {
+            schedule: normalized.clone(),
+            ..settings
+        },
+    )
+    .map_err(|error| error.to_string())?;
+    if let Ok(mut current) = state.schedule.lock() {
+        *current = normalized;
+    }
+    // Apply it now rather than at the next tick. A user who has just moved the window to
+    // "starts in one minute" should not watch a still queue for twenty seconds wondering
+    // whether the setting took.
+    if let Some(engine) = state.engine.as_ref() {
+        apply_schedule(engine, &state.schedule, &state.held).await;
+    }
+    Ok(schedule_snapshot(&state.schedule, &state.held))
+}
+
+/// What the UI needs to explain the window: whether it is open, and when that next changes.
+#[derive(Clone, Serialize)]
+struct ScheduleStatus {
+    enabled: bool,
+    open: bool,
+    /// Unix seconds. None when the window never changes state — disabled, always open, or set
+    /// to no days at all.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next_change_at: Option<i64>,
+    /// How many transfers are waiting on the window right now.
+    waiting: usize,
+}
+
+fn schedule_snapshot(schedule: &Mutex<Schedule>, held: &Mutex<HeldStore>) -> ScheduleStatus {
+    let current = schedule
+        .lock()
+        .map(|value| value.clone())
+        .unwrap_or_default();
+    let now = Local::now();
+    ScheduleStatus {
+        enabled: current.enabled,
+        open: current.is_open_at(now),
+        next_change_at: current.next_change_at(now).map(|at| at.timestamp()),
+        waiting: held.lock().map(|store| store.count()).unwrap_or(0),
+    }
+}
+
+#[tauri::command]
+fn schedule_status(state: State<'_, AppState>) -> ScheduleStatus {
+    schedule_snapshot(&state.schedule, &state.held)
 }
 
 #[tauri::command]
@@ -220,6 +342,8 @@ async fn submit_url(
     queue_download(
         state.engine()?,
         &state.history,
+        &state.held,
+        &state.schedule,
         url,
         destination,
         organize_by_type,
@@ -237,6 +361,8 @@ async fn confirm_clipboard_offer(
     queue_download(
         state.engine()?,
         &state.history,
+        &state.held,
+        &state.schedule,
         offer.url,
         destination,
         organize_by_type,
@@ -286,6 +412,9 @@ async fn control_download(
             .unwrap_or_else(|| derived_filename(&url));
         let directory = PathBuf::from(&old.dir);
         let _ = engine.cancel(&download_id).await;
+        if let Ok(mut store) = state.held.lock() {
+            store.forget(&download_id);
+        }
         let gid = engine
             .add_uri(&url, &directory, &filename)
             .await
@@ -295,11 +424,15 @@ async fn control_download(
         if let Ok(mut store) = state.history.lock() {
             store.record_added(&gid);
         }
+        // A retry outside the window joins the queue for the next one, exactly like a newly
+        // added download. Letting it run because it happens to be a second attempt would be a
+        // hole straight through the schedule.
+        hold_if_closed(engine, &state.held, &state.schedule, &gid).await;
         let status = engine
             .status(&gid)
             .await
             .map_err(|error| error.to_string())?;
-        return Ok(stamped(to_snapshot(&status), &state.history));
+        return Ok(stamped(to_snapshot(&status), &state.history, &state.held));
     }
 
     match action.as_str() {
@@ -309,6 +442,16 @@ async fn control_download(
         _ => return Err("unsupported download action".into()),
     }
     .map_err(|error| error.to_string())?;
+
+    // The schedule's claim on a transfer only survives while the user has not overruled it.
+    // Resuming outside the window is an explicit "start this one now", and it has to stick, or
+    // the next tick would pause it again and the button would look broken.
+    if let Ok(mut store) = state.held.lock() {
+        match action.as_str() {
+            "resume" => store.allow(&download_id),
+            _ => store.forget(&download_id),
+        }
+    }
 
     if action == "cancel" {
         let mut snapshot = before.unwrap_or_else(|| Snapshot {
@@ -327,18 +470,19 @@ async fn control_download(
             directory: String::new(),
             added_at: None,
             completed_at: None,
+            scheduled: false,
             error: None,
         });
         snapshot.status = DownloadStatus::Cancelled;
         snapshot.bytes_per_second = 0;
         snapshot.eta_seconds = None;
-        return Ok(stamped(snapshot, &state.history));
+        return Ok(stamped(snapshot, &state.history, &state.held));
     }
     let status = engine
         .status(&download_id)
         .await
         .map_err(|error| error.to_string())?;
-    Ok(stamped(to_snapshot(&status), &state.history))
+    Ok(stamped(to_snapshot(&status), &state.history, &state.held))
 }
 
 async fn completed_path(engine: &Aria2, id: &str) -> Result<PathBuf, String> {
@@ -439,6 +583,128 @@ async fn reveal_completed_file(
         .map_err(|error| error.to_string())
 }
 
+/// Brings the queue into line with the download window, in whichever direction is needed.
+///
+/// Idempotent by construction, because it runs on a timer, on startup, and again the moment
+/// the user saves a change: every branch asks the engine what is true right now rather than
+/// remembering what it did last time. That also makes it correct after a crash, where the only
+/// surviving state is aria2's session file and the two sidecar stores.
+async fn apply_schedule(engine: &Aria2, schedule: &Mutex<Schedule>, held: &Mutex<HeldStore>) {
+    let current = schedule
+        .lock()
+        .map(|value| value.clone())
+        .unwrap_or_default();
+    let open = current.is_open_at(Local::now());
+    let Ok(all) = engine.all().await else {
+        return;
+    };
+
+    if open {
+        // Resume what the schedule stopped, and only that. Anything the user paused by hand
+        // stays paused: 2am is not permission to restart a download they walked away from.
+        let mut resumed = false;
+        for status in &all {
+            let ours = held
+                .lock()
+                .map(|store| store.holds(&status.gid))
+                .unwrap_or(false);
+            if !ours {
+                continue;
+            }
+            if status.status == "paused" && engine.resume(&status.gid).await.is_err() {
+                continue;
+            }
+            if let Ok(mut store) = held.lock() {
+                store.release(&status.gid);
+            }
+            resumed = true;
+        }
+        // The window is open for everyone now, so a "start this one anyway" has nothing left
+        // to override — and keeping it would exempt that download from tonight's close too.
+        if let Ok(mut store) = held.lock() {
+            store.clear_overrides();
+        }
+        if resumed {
+            engine.save_session().await;
+        }
+        enforce_concurrency(engine, current.max_concurrent).await;
+        return;
+    }
+
+    let mut paused = false;
+    for status in &all {
+        if !matches!(status.status.as_str(), "active" | "waiting") {
+            continue;
+        }
+        if held
+            .lock()
+            .map(|store| store.allows(&status.gid))
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        if engine.pause(&status.gid).await.is_err() {
+            continue;
+        }
+        if let Ok(mut store) = held.lock() {
+            store.hold(&status.gid);
+        }
+        paused = true;
+    }
+    if paused {
+        // Flush now for the same reason a cancel does: this process only ever dies by Job
+        // Object kill, and a pause lost inside the ten-second save window would come back
+        // downloading at the next launch — in the middle of the night the user reserved.
+        engine.save_session().await;
+    }
+}
+
+/// Holds the queue to the configured number of simultaneous transfers.
+///
+/// Two halves, and both are needed. Telling the engine the limit governs what it promotes from
+/// here on; it does *not* touch transfers already running, which sail past a freshly lowered
+/// cap until something makes the engine think again. Nudging the excess through
+/// pause-and-unpause is that something — see `Aria2::renegotiate`. With only the first half,
+/// turning the dial from 8 down to 2 mid-evening appears to do nothing until every current
+/// download finishes; with only the second, the engine promotes the queue straight back up to
+/// the old number as soon as a slot frees.
+///
+/// Setting the option here rather than once at startup means it is re-asserted on every tick,
+/// so it survives an engine that had to be restarted underneath us.
+async fn enforce_concurrency(engine: &Aria2, cap: u32) {
+    let _ = engine
+        .change_global_option("max-concurrent-downloads", &cap.to_string())
+        .await;
+    let Ok(all) = engine.all().await else {
+        return;
+    };
+    let active: Vec<&Aria2Status> = all
+        .iter()
+        .filter(|status| status.status == "active")
+        .collect();
+    if active.len() as u32 <= cap {
+        return;
+    }
+    // Demote from the end of aria2's active list: those are the most recently promoted, so the
+    // transfers closest to finishing keep their slots and the queue drains rather than churns.
+    for status in active.into_iter().skip(cap as usize) {
+        let _ = engine.renegotiate(&status.gid).await;
+    }
+}
+
+fn spawn_schedule_ticker(
+    engine: Arc<Aria2>,
+    schedule: Arc<Mutex<Schedule>>,
+    held: Arc<Mutex<HeldStore>>,
+) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            apply_schedule(&engine, &schedule, &held).await;
+            tokio::time::sleep(SCHEDULE_INTERVAL).await;
+        }
+    });
+}
+
 /// True exactly when a download the poller has been watching crosses into Completed.
 /// A gid first seen already complete (session restore after a restart) is old news, not an
 /// event — announcing it would greet every launch with a wall of stale notifications.
@@ -449,14 +715,44 @@ fn is_new_completion(previous: Option<&DownloadStatus>, current: &DownloadStatus
 
 /// Pushes queue changes to the UI. Only transfers whose visible state actually changed are
 /// emitted, so a stalled queue stays silent instead of repeating itself to assistive tech.
-fn spawn_progress_poller(app: AppHandle, engine: Arc<Aria2>, history: Arc<Mutex<HistoryStore>>) {
+///
+/// It is also where downloads that appear from outside the app — the browser extension hands
+/// them straight to the engine — first become visible, so it is the earliest point at which a
+/// closed window can be enforced on them.
+fn spawn_progress_poller(
+    app: AppHandle,
+    engine: Arc<Aria2>,
+    history: Arc<Mutex<HistoryStore>>,
+    held: Arc<Mutex<HeldStore>>,
+    schedule: Arc<Mutex<Schedule>>,
+) {
     tauri::async_runtime::spawn(async move {
         let mut previous: std::collections::HashMap<String, (u64, DownloadStatus, u32)> =
             std::collections::HashMap::new();
         loop {
             if let Ok(all) = engine.all().await {
                 for status in &all {
-                    let snapshot = stamped(to_snapshot(status), &history);
+                    // A transfer nobody has told us about, running while the window is shut.
+                    // Park it now: half a second of unwanted transfer is the most this can
+                    // cost, against twenty if it waited for the next schedule tick.
+                    let unseen = !previous.contains_key(&status.gid);
+                    let running = matches!(status.status.as_str(), "active" | "waiting");
+                    if unseen
+                        && running
+                        && hold_if_closed(&engine, &held, &schedule, &status.gid).await
+                    {
+                        // Emit nothing this round: the pause has been issued but the status in
+                        // hand still says "active", and announcing a transfer as running when
+                        // it is already stopping is a flicker with no information in it. The
+                        // next poll reports it paused and scheduled, which is the truth.
+                        let pending = to_snapshot(status);
+                        previous.insert(
+                            status.gid.clone(),
+                            (pending.completed_bytes, pending.status, pending.connections),
+                        );
+                        continue;
+                    }
+                    let snapshot = stamped(to_snapshot(status), &history, &held);
                     let finished = is_new_completion(
                         previous.get(&snapshot.id).map(|(_, status, _)| status),
                         &snapshot.status,
@@ -576,11 +872,16 @@ fn main() {
                 }
             };
             let history = Arc::new(Mutex::new(HistoryStore::load(&data_dir)));
+            let held = Arc::new(Mutex::new(HeldStore::load(&data_dir)));
+            // The window is read once here and kept in memory; the settings file stays the
+            // durable copy, but the ticker and the poller must not go to disk to consult it.
+            let schedule = Arc::new(Mutex::new(settings::load(&data_dir).schedule.normalized()));
             if let Some(engine) = engine.as_ref() {
-                // Trim history to what the engine still knows, so the sidecar tracks the
-                // queue instead of growing forever.
+                // Trim both sidecars to what the engine still knows, so they track the queue
+                // instead of growing forever.
                 if let Ok(all) = tauri::async_runtime::block_on(engine.all()) {
-                    let live = all.iter().map(|status| status.gid.clone()).collect();
+                    let live: HashSet<String> =
+                        all.iter().map(|status| status.gid.clone()).collect();
                     if let Ok(mut store) = history.lock() {
                         store.prune(&live);
                         // Session-restored downloads predate the store (or survived a wipe):
@@ -589,8 +890,22 @@ fn main() {
                             store.record_added(&status.gid);
                         }
                     }
+                    if let Ok(mut store) = held.lock() {
+                        store.retain_live(&live);
+                    }
                 }
-                spawn_progress_poller(handle.clone(), engine.clone(), history.clone());
+                // Judge the window before the first frame, and apply the concurrency cap with
+                // it. A launch at three in the afternoon with an overnight schedule must not
+                // spend twenty seconds downloading first.
+                tauri::async_runtime::block_on(apply_schedule(engine, &schedule, &held));
+                spawn_schedule_ticker(engine.clone(), schedule.clone(), held.clone());
+                spawn_progress_poller(
+                    handle.clone(),
+                    engine.clone(),
+                    history.clone(),
+                    held.clone(),
+                    schedule.clone(),
+                );
                 // Publish how to reach the engine so the browser native host can hand
                 // downloads to this running instance. The token inside is what protects the
                 // endpoint, so the file lives in the user's own app data and nowhere else.
@@ -607,6 +922,8 @@ fn main() {
                 engine,
                 config_dir: data_dir,
                 history,
+                held,
+                schedule,
             });
             spawn_clipboard_watcher(handle);
             Ok(())
@@ -618,6 +935,7 @@ fn main() {
             confirm_clipboard_offer,
             load_settings,
             save_settings,
+            schedule_status,
             control_download,
             open_completed_file,
             reveal_completed_file,

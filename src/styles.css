@@ -363,6 +363,92 @@ input[type="url"]:focus { border-color: var(--crust); outline: none; }
 #destination { display: block; font-size: 12.5px; color: var(--ink-soft); }
 .check-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-weight: 400; }
 
+/* ── Schedule ──────────────────────────────────────────────────────────────
+ * A queue that has stopped itself must never look like one that has broken, so the schedule
+ * gets a permanent seat in the title bar whenever it is the reason nothing is moving. */
+
+.schedule-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid color-mix(in oklab, var(--crust) 45%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--crust) 16%, var(--surface));
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.schedule-pill:hover { background: color-mix(in oklab, var(--crust) 26%, var(--surface)); }
+.schedule-pill .pill-icon { color: var(--crust-deep); }
+/* The throughput readout claims the free space; without this the pill would be pushed against
+   it and read as one control. */
+.schedule-pill + .titlebar-actions { margin-inline-start: 4px; }
+
+.schedule-state {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+  border-inline-start: 3px solid var(--line);
+}
+.schedule-state[data-state="open"] { border-inline-start-color: var(--lettuce); }
+.schedule-state[data-state="closed"] { border-inline-start-color: var(--crust); }
+.schedule-headline { font-weight: 700; font-size: 13px; }
+.schedule-detail { font-size: 12.5px; color: var(--ink-soft); }
+
+.schedule-window {
+  margin: 12px 0 0;
+  padding: 0;
+  border: 0;
+}
+/* A disabled fieldset already blocks interaction; dimming is what makes that visible rather
+   than leaving the controls looking live but unresponsive. */
+.schedule-window:disabled { opacity: 0.5; }
+
+.time-row { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 4px; }
+.time-field { display: flex; align-items: center; gap: 8px; }
+
+input[type="time"], input[type="number"] {
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+input[type="number"] { width: 72px; }
+input[type="time"]:focus, input[type="number"]:focus { border-color: var(--crust); outline: none; }
+
+.day-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.day-choice {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  font-weight: 600;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+/* Ticked days carry the crust colour, so which nights are on is readable at a glance instead
+   of requiring seven checkboxes to be inspected one at a time. */
+.day-choice:has(input:checked) {
+  background: color-mix(in oklab, var(--crust) 22%, var(--surface));
+  border-color: color-mix(in oklab, var(--crust) 55%, var(--line));
+}
+.day-choice:has(input:focus-visible) { outline: 2px solid var(--crust-deep); outline-offset: 1px; }
+
+.concurrency-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.concurrency-row .help { flex-basis: 100%; margin-top: 0; }
+
 /* ── Buttons ───────────────────────────────────────────────────────────── */
 
 button { font: inherit; cursor: pointer; border-radius: var(--radius-sm); }
@@ -500,6 +586,10 @@ button[disabled] { opacity: 0.5; cursor: default; }
   min-width: 0;
 }
 .download-state { flex: none; font-weight: 600; }
+/* Held by the schedule, not abandoned: the crust colour says "waiting its turn" where the
+   plain paused grey says "somebody stopped this and walked away". */
+.download-card[data-scheduled="true"] { border-inline-start-color: var(--crust); }
+.download-card[data-scheduled="true"] .download-state { color: var(--crust-deep); }
 .download-card[data-status="active"] .download-state { color: var(--crust-deep); }
 .download-card[data-status="failed"] .download-state { color: var(--tomato); }
 .download-card[data-status="completed"] .download-state { color: var(--lettuce); }

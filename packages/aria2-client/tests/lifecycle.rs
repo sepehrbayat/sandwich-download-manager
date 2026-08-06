@@ -188,6 +188,85 @@ async fn cancel_stops_a_transfer() {
 }
 
 #[tokio::test]
+async fn lowering_the_concurrency_cap_demotes_running_transfers_to_waiting() {
+    // The schedule's "download N at once" rests entirely on this, and aria2 does not do it by
+    // itself: `changeGlobalOption` governs what the engine promotes from then on and leaves
+    // transfers that are already running alone (aria2 issue #2285). `renegotiate` is the
+    // pause-and-unpause that forces the re-decision.
+    //
+    // The two things this pins down are that the excess really does stop, and that it stops as
+    // *waiting* rather than paused — a paused transfer would sit there for ever, turning a
+    // concurrency limit into a queue that silently loses downloads.
+    if !aria2_available() {
+        eprintln!("skipping: aria2c not installed");
+        return;
+    }
+    let payload: Vec<u8> = (0..=255u8).cycle().take(4_000_000).collect();
+    let url = slow_range_server(payload);
+    let temp = std::env::temp_dir().join(format!("sandwich-aria2-cap-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&temp);
+    let _ = std::fs::create_dir_all(&temp);
+
+    let engine = Aria2::start(&temp).await.expect("engine should start");
+    let mut gids = Vec::new();
+    for index in 0..4 {
+        gids.push(
+            engine
+                .add_uri(&url, &temp, &format!("payload-{index}.bin"))
+                .await
+                .expect("download should queue"),
+        );
+    }
+
+    // aria2's default cap is 5, so all four should be running before anything is changed.
+    let mut active_before = 0;
+    for _ in 0..40 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        active_before = engine
+            .all()
+            .await
+            .expect("listing")
+            .iter()
+            .filter(|status| status.status == "active")
+            .count();
+        if active_before == 4 {
+            break;
+        }
+    }
+    assert_eq!(
+        active_before, 4,
+        "all four transfers should start unrestricted"
+    );
+
+    engine
+        .change_global_option("max-concurrent-downloads", "2")
+        .await
+        .expect("the engine should accept a new limit");
+    for gid in gids.iter().skip(2) {
+        engine.renegotiate(gid).await.expect("renegotiate");
+    }
+
+    let mut active_after = usize::MAX;
+    let mut waiting_after = 0;
+    for _ in 0..40 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let all = engine.all().await.expect("listing");
+        active_after = all.iter().filter(|s| s.status == "active").count();
+        waiting_after = all.iter().filter(|s| s.status == "waiting").count();
+        if active_after <= 2 {
+            break;
+        }
+    }
+    assert_eq!(active_after, 2, "the lowered cap was not honoured");
+    assert_eq!(
+        waiting_after, 2,
+        "the demoted transfers must be waiting for a slot, not parked as paused"
+    );
+
+    let _ = std::fs::remove_dir_all(&temp);
+}
+
+#[tokio::test]
 async fn a_cancel_reaches_disk_before_any_shutdown() {
     // The engine only ever dies by Job Object kill - there is no graceful exit in
     // production. So a cancel must be IN THE SESSION FILE the moment the call returns:

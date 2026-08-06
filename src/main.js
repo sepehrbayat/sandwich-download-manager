@@ -1,4 +1,7 @@
-import { dateGroup, describeError, formatBytes, formatEta, orderedCells, progressPercent, sourceHost, statusLabels } from "./formatters.js";
+import {
+  WEEKDAYS, clockToMinutes, dateGroup, describeError, formatBytes, formatEta, minutesToClock,
+  orderedCells, progressPercent, scheduleSummary, sourceHost, statusLabel
+} from "./formatters.js";
 import { confirmDialog, messageDialog, toast } from "./feedback.js";
 
 const invoke = window.__TAURI__?.core?.invoke ?? window.__TAURI_INTERNALS__?.invoke;
@@ -48,7 +51,22 @@ const elements = {
   offerUrl: document.querySelector("#clipboard-url"),
   confirmOffer: document.querySelector("#confirm-offer"),
   dismissOffer: document.querySelector("#dismiss-offer"),
-  rail: document.querySelectorAll(".rail-item")
+  rail: document.querySelectorAll(".rail-item"),
+  openSchedule: document.querySelector("#open-schedule"),
+  closeSchedule: document.querySelector("#close-schedule"),
+  schedulePanel: document.querySelector("#schedule"),
+  scheduleEnabled: document.querySelector("#schedule-enabled"),
+  scheduleWindow: document.querySelector("#schedule-window"),
+  scheduleStart: document.querySelector("#schedule-start"),
+  scheduleEnd: document.querySelector("#schedule-end"),
+  scheduleDays: document.querySelector("#schedule-days"),
+  scheduleConcurrent: document.querySelector("#schedule-concurrent"),
+  scheduleState: document.querySelector("#schedule-state"),
+  scheduleHeadline: document.querySelector("#schedule-headline"),
+  scheduleDetail: document.querySelector("#schedule-detail"),
+  scheduleError: document.querySelector("#schedule-error"),
+  schedulePill: document.querySelector("#schedule-pill"),
+  schedulePillText: document.querySelector("#schedule-pill-text")
 };
 
 /* ── Theme ──────────────────────────────────────────────────────────────── */
@@ -83,6 +101,15 @@ document.querySelectorAll(".theme-swatch").forEach((swatch) => {
 
 let downloads = [];
 let destination = "";
+// Mirrors the Rust-side default, so the panel is filled in before settings load rather than
+// flashing empty fields.
+let schedule = {
+  enabled: false,
+  start_minute: 2 * 60,
+  end_minute: 7 * 60,
+  days: [true, true, true, true, true, true, true],
+  max_concurrent: 5
+};
 let clipboardOffer = null;
 let filter = "all";
 let searchQuery = "";
@@ -185,8 +212,13 @@ function renderStack(container, item) {
 
 /* ── Cards ──────────────────────────────────────────────────────────────── */
 
-function actionsFor(status) {
+function actionsFor(item) {
+  const status = item.status;
   if (["queued", "active"].includes(status)) return [["Pause", "pause"], ["Cancel", "cancel"]];
+  // Held by the schedule rather than by the user: "Resume" would answer a question nobody
+  // asked, where "Start now" names the thing the button actually does — override the window
+  // for this one download.
+  if (item.scheduled && status === "paused") return [["Start now", "resume"], ["Cancel", "cancel"]];
   if (["paused", "recoverably_interrupted"].includes(status)) return [["Resume", "resume"], ["Cancel", "cancel"]];
   if (status === "completed") return [["Open file", "open"], ["Show in folder", "reveal"]];
   // Recovery belongs on the thing that failed. Sending the user to a queue-wide control for
@@ -269,7 +301,7 @@ function actionButton(label, action, item) {
         const updated = await bridge.invoke("control_download", { downloadId: item.id, action });
         // A retry is a new transfer with a new id; the failed original it replaces goes away.
         if (updated.id !== item.id) downloads = downloads.filter((entry) => entry.id !== item.id);
-        mergeDownload(updated, `${item.filename}: ${statusLabels[updated.status] ?? updated.status}`);
+        mergeDownload(updated, `${item.filename}: ${statusLabel(updated)}`);
         if (action === "retry") toast(`Retrying ${item.filename}`, { tone: "info" });
       }
     } catch (error) {
@@ -320,7 +352,7 @@ function createCard(item) {
 
 function updateCard(entry, item) {
   const percent = progressPercent(item.completed_bytes, item.total_bytes);
-  const label = statusLabels[item.status] ?? item.status;
+  const label = statusLabel(item);
   const rounded = Math.round(percent);
   const dead = ["failed", "cancelled"].includes(item.status);
 
@@ -364,6 +396,7 @@ function updateCard(entry, item) {
     entry.error.hidden = true;
   }
   entry.card.dataset.status = item.status;
+  entry.card.dataset.scheduled = String(Boolean(item.scheduled));
 
   entry.stack.setAttribute(
     "aria-label",
@@ -388,8 +421,11 @@ function updateCard(entry, item) {
   }
 
   // Replacing the buttons destroys keyboard focus, so only do it when the actions change.
-  const actions = actionsFor(item.status);
-  const key = actions.map(([, action]) => action).join("|");
+  const actions = actionsFor(item);
+  // Keyed on the labels too, not just the actions: "Resume" and "Start now" are the same
+  // command with different meanings, and only the wording tells the user which one they are
+  // about to do.
+  const key = actions.map((pair) => pair.join(":")).join("|");
   if (key !== entry.actionsKey) {
     const hadFocus = entry.actions.contains(document.activeElement) || pendingFocusId === item.id;
     entry.actions.replaceChildren(...actions.map(([text, action]) => actionButton(text, action, item)));
@@ -578,6 +614,9 @@ function mergeDownload(snapshot, announcement) {
 }
 
 async function refresh() {
+  // The window opens on the clock with nothing for the user to click, so the indicator has to
+  // keep itself honest. This costs no engine round trip — it reads the schedule and a counter.
+  refreshScheduleStatus();
   try {
     downloads = await bridge.invoke("list_downloads");
     // Connectivity is only news when it is bad. A permanent "connected" badge is plumbing.
@@ -653,9 +692,13 @@ let dismissSettingsToast = null;
 
 async function persistSettings() {
   try {
-    await bridge.invoke("save_settings", {
-      settings: { destination, organize_by_type: elements.organize.checked, theme }
+    // The backend applies the schedule as part of saving and hands back what that did, so the
+    // panel can say "downloads start at 02:00" from the same round trip rather than guessing
+    // and being corrected a moment later.
+    const status = await bridge.invoke("save_settings", {
+      settings: { destination, organize_by_type: elements.organize.checked, theme, schedule }
     });
+    if (status) showScheduleStatus(status);
     // One quiet receipt, replaced rather than stacked when settings change in a burst.
     dismissSettingsToast?.();
     dismissSettingsToast = toast("Settings saved", { tone: "success" });
@@ -681,6 +724,124 @@ elements.chooseFolder.addEventListener("click", async () => {
 });
 
 elements.organize.addEventListener("change", persistSettings);
+
+/* ── Schedule ───────────────────────────────────────────────────────────── */
+
+// The day boxes are generated rather than written out seven times, so the labels, the order and
+// the schedule's own Monday-first indexing cannot drift apart.
+const dayBoxes = WEEKDAYS.map((day, index) => {
+  const label = document.createElement("label");
+  label.className = "day-choice";
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.dataset.day = String(index);
+  box.setAttribute("aria-label", day.long);
+  const text = document.createElement("span");
+  text.textContent = day.short;
+  text.setAttribute("aria-hidden", "true");
+  label.append(box, text);
+  elements.scheduleDays.append(label);
+  box.addEventListener("change", commitSchedule);
+  return box;
+});
+
+/** Paints the controls from the schedule we hold. Never reads them; that is `readSchedule`. */
+function showSchedule() {
+  elements.scheduleEnabled.checked = schedule.enabled;
+  elements.scheduleStart.value = minutesToClock(schedule.start_minute);
+  elements.scheduleEnd.value = minutesToClock(schedule.end_minute);
+  elements.scheduleConcurrent.value = String(schedule.max_concurrent);
+  dayBoxes.forEach((box, index) => { box.checked = Boolean(schedule.days[index]); });
+  // The window controls are meaningless while the window is off, and a disabled fieldset says
+  // so in a way both a mouse and a screen reader understand. "How many at once" stays live —
+  // it applies whether or not the hours are restricted.
+  elements.scheduleWindow.disabled = !schedule.enabled;
+}
+
+/**
+ * Reads the controls back into a schedule, or reports why it cannot.
+ *
+ * A half-typed time is the normal case, not an error state — time inputs are empty between
+ * keystrokes — so an unreadable field leaves the stored value alone instead of writing
+ * midnight over the user's window.
+ */
+function readSchedule() {
+  const start = clockToMinutes(elements.scheduleStart.value);
+  const end = clockToMinutes(elements.scheduleEnd.value);
+  const days = dayBoxes.map((box) => box.checked);
+  const requested = Number(elements.scheduleConcurrent.value);
+  const concurrent = Number.isFinite(requested)
+    ? Math.min(16, Math.max(1, Math.round(requested)))
+    : schedule.max_concurrent;
+
+  const next = {
+    enabled: elements.scheduleEnabled.checked,
+    start_minute: start ?? schedule.start_minute,
+    end_minute: end ?? schedule.end_minute,
+    days,
+    max_concurrent: concurrent
+  };
+
+  // Two ways to write a schedule that silently downloads nothing. Both are easy to do by
+  // accident and impossible to diagnose from the queue, so they are called out here rather
+  // than left to be discovered at 2am.
+  let problem = "";
+  if (next.enabled && days.every((day) => !day)) {
+    problem = "No days are ticked, so nothing will download. Tick at least one day.";
+  } else if (next.enabled && (start === null || end === null)) {
+    problem = "Enter both times as hours and minutes.";
+  }
+  return { next, problem };
+}
+
+function commitSchedule() {
+  const { next, problem } = readSchedule();
+  elements.scheduleError.textContent = problem;
+  elements.scheduleError.hidden = !problem;
+  schedule = next;
+  elements.scheduleWindow.disabled = !schedule.enabled;
+  persistSettings();
+}
+
+/** Puts the backend's answer about the window into both places that report it. */
+function showScheduleStatus(status) {
+  const summary = scheduleSummary(status, Date.now());
+  elements.scheduleHeadline.textContent = summary.headline;
+  elements.scheduleDetail.textContent = summary.detail;
+  elements.scheduleState.dataset.state = summary.state;
+  elements.schedulePill.hidden = !summary.pill;
+  elements.schedulePillText.textContent = summary.pill;
+}
+
+async function refreshScheduleStatus() {
+  try {
+    showScheduleStatus(await bridge.invoke("schedule_status"));
+  } catch {
+    // The engine being unreachable already has its own banner; a second alarm about the
+    // schedule would be the same news twice.
+  }
+}
+
+elements.scheduleEnabled.addEventListener("change", commitSchedule);
+elements.scheduleConcurrent.addEventListener("change", commitSchedule);
+// Times commit on change rather than on input: "change" fires when the field holds a complete
+// time, so a window is never briefly saved as 02:00–00:00 while the second field is half typed.
+elements.scheduleStart.addEventListener("change", commitSchedule);
+elements.scheduleEnd.addEventListener("change", commitSchedule);
+
+function openSchedulePanel() {
+  elements.schedulePanel.hidden = false;
+  refreshScheduleStatus();
+  elements.scheduleEnabled.focus();
+}
+elements.openSchedule.addEventListener("click", openSchedulePanel);
+// The indicator is the thing people will actually click when they want to know why nothing is
+// downloading, so it opens the panel that answers that.
+elements.schedulePill.addEventListener("click", openSchedulePanel);
+elements.closeSchedule.addEventListener("click", () => {
+  elements.schedulePanel.hidden = true;
+  elements.openSchedule.focus();
+});
 
 async function forEachVisible(action) {
   const targets = downloads.filter((item) => matchesFilter(item, filter));
@@ -778,10 +939,12 @@ elements.confirmOffer.addEventListener("click", async () => {
 bridge.listen("download-snapshot", ({ payload }) => {
   const previous = downloads.find((item) => item.id === payload.id);
   // Announce state changes only. A progress tick every half second would flood a screen reader.
-  const announcement = previous && previous.status === payload.status
-    ? null
-    : `${payload.filename}: ${statusLabels[payload.status] ?? payload.status}`;
-  mergeDownload(payload, announcement);
+  // "Scheduled" counts as a state: a download going from running to waiting for the window is
+  // exactly the kind of thing somebody not watching the screen needs told.
+  const unchanged = previous
+    && previous.status === payload.status
+    && Boolean(previous.scheduled) === Boolean(payload.scheduled);
+  mergeDownload(payload, unchanged ? null : `${payload.filename}: ${statusLabel(payload)}`);
 });
 
 /* ── Updates ────────────────────────────────────────────────────────────── */
@@ -859,9 +1022,13 @@ async function restoreSettings() {
     // The Rust store is the durable truth; the localStorage mirror only bridged the gap
     // until this load finished.
     if (stored?.theme) applyTheme(stored.theme);
+    // A settings file written before scheduling existed has no schedule at all; the defaults
+    // already loaded stand in, and they are the ones that restrict nothing.
+    if (stored?.schedule) schedule = { ...schedule, ...stored.schedule };
   } catch {
     // First run, or preferences unavailable: the defaults in the markup already apply.
   }
+  showSchedule();
 }
 
 restoreSettings().finally(refresh);
