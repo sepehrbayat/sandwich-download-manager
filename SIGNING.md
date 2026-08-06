@@ -80,13 +80,16 @@ Import the certificate, then find its thumbprint:
 Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert | Select-Object Subject, Thumbprint
 ```
 
-Build with the signing overlay, supplying the thumbprint inline. Tauri does **not** expand
-environment variables inside config files — a `$VAR` placeholder is passed to signtool
-verbatim and fails — so the thumbprint goes in as JSON on the command line:
+Build with the signing overlay, supplying the thumbprint through a small throwaway config
+file. Two traps make the obvious alternatives fail: Tauri does **not** expand environment
+variables inside config files (a `$VAR` placeholder reaches signtool verbatim), and inline
+JSON on the command line loses its quotes on the way into `npx`, because PowerShell uses
+legacy quoting for `.cmd` shims:
 
 ```
-$identity = '{"bundle":{"windows":{"certificateThumbprint":"<thumbprint>"}}}'
-npx @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json --config apps/desktop/tauri.signing.conf.json --config $identity
+'{"bundle":{"windows":{"certificateThumbprint":"<thumbprint>"}}}' |
+  Set-Content "$env:TEMP\authenticode.conf.json" -Encoding ascii
+npx @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json --config apps/desktop/tauri.signing.conf.json --config "$env:TEMP\authenticode.conf.json"
 ```
 
 The overlay carries only the settings that are the same for every certificate: the digest

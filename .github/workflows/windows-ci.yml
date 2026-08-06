@@ -72,20 +72,26 @@ jobs:
         #     artifacts unsigned, so a keyless build turns them off — this is a
         #     verification build, not a release.
         #   - Authenticode: same pattern as before via the thumbprint secret.
+        # Every --config here is a FILE path, never inline JSON: npx is a .cmd shim, and
+        # PowerShell's legacy quoting for batch files strips the inner quotes out of a JSON
+        # argument before Tauri ever sees it.
         run: |
           $configs = @("--config", "apps/desktop/tauri.conf.json")
           $updaterKey = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
           if ($updaterKey) {
             $env:TAURI_SIGNING_PRIVATE_KEY = $updaterKey
           } else {
-            $configs += @("--config", '{"bundle":{"createUpdaterArtifacts":false}}')
+            $configs += @("--config", "apps/desktop/tauri.keyless.conf.json")
           }
           $thumbprint = "${{ secrets.SIGNING_CERT_THUMBPRINT }}"
           if ($thumbprint) {
             # Tauri does not expand environment variables inside config files, so the
-            # thumbprint is supplied as inline JSON rather than a placeholder.
+            # thumbprint is written into a throwaway overlay at build time.
+            $identity = Join-Path $env:RUNNER_TEMP "authenticode.conf.json"
+            @{ bundle = @{ windows = @{ certificateThumbprint = $thumbprint } } } |
+              ConvertTo-Json -Depth 4 | Set-Content -Path $identity -Encoding ascii
             $configs += @("--config", "apps/desktop/tauri.signing.conf.json")
-            $configs += @("--config", ('{"bundle":{"windows":{"certificateThumbprint":"' + $thumbprint + '"}}}'))
+            $configs += @("--config", $identity)
           }
           npx --yes @tauri-apps/cli@2 build @configs
 
