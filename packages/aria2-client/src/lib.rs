@@ -419,9 +419,15 @@ impl Aria2 {
         let _ = self
             .call("aria2.forceRemove", serde_json::json!([gid]))
             .await;
-        self.call("aria2.removeDownloadResult", serde_json::json!([gid]))
+        let result = self
+            .call("aria2.removeDownloadResult", serde_json::json!([gid]))
             .await
-            .map(|_| ())
+            .map(|_| ());
+        // Flush immediately: the periodic save runs every 10 s, and this process only ever
+        // dies by Job Object kill. A cancel inside that window would otherwise be undone on
+        // the next launch — cancelled downloads resurrecting, still downloading.
+        self.save_session().await;
+        result
     }
 
     pub async fn status(&self, gid: &str) -> Result<Aria2Status, Aria2Error> {

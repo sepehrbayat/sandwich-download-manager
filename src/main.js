@@ -809,11 +809,19 @@ async function offerUpdateIfAvailable() {
     actions: [{
       label: "Update now",
       onClick: async () => {
-        toast("Downloading the update — Sandwich will restart itself when it is ready.", { tone: "info", sticky: true });
+        const progress = toast("Downloading the update — Sandwich will restart itself when it is ready.", { tone: "info", sticky: true });
         try {
           await bridge.invoke("install_update");
         } catch (error) {
-          toast(`The update could not be installed: ${error.message ?? error}`, { tone: "error" });
+          progress();
+          // The raw plugin error can be a 400-character signature dump. Sort the failure into
+          // the two cases a person can act on differently, keep the forensics in the console.
+          console.error("update install failed:", error);
+          const message = String(error?.message ?? error);
+          const explanation = /signature|verify|decode/i.test(message)
+            ? "The update's signature could not be verified, so it was not installed. The download may be corrupted — or not the real thing. Your current version keeps running."
+            : "The update could not be downloaded. Check your connection and try again later — Sandwich will also re-check on its own.";
+          toast(explanation, { tone: "error" });
         }
       }
     }]
