@@ -47,7 +47,12 @@ $manifest = [ordered]@{
 }
 
 $out = Join-Path $bundle "latest.json"
-$manifest | ConvertTo-Json -Depth 5 | Set-Content -Path $out -Encoding UTF8
+# Not Set-Content: under Windows PowerShell 5.1 its UTF8 writes a BOM, and serde_json —
+# which every installed copy parses this file with — rejects a manifest that starts with
+# one. That is an updater outage that no local Get-Content check can see, because
+# Get-Content strips the BOM back out on read.
+$json = $manifest | ConvertTo-Json -Depth 5
+[System.IO.File]::WriteAllText((Join-Path (Resolve-Path $bundle) "latest.json"), $json, [System.Text.UTF8Encoding]::new($false))
 Write-Host "wrote $out"
 Write-Host "  version : $Version"
 Write-Host "  url     : $($manifest.platforms.'windows-x86_64'.url)"
