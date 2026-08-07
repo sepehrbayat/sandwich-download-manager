@@ -868,6 +868,12 @@ fn main() {
             // the UI never claims "connected" while the queue is unavailable.
             // Prefer the engine shipped beside the app; fall back to PATH for a dev run from
             // the workspace, where no bundle exists yet.
+            let handoff = data_dir.join("engine.json");
+            if let Err(error) = std::fs::remove_file(&handoff) {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    eprintln!("could not remove the stale engine handoff: {error}");
+                }
+            }
             let aria2_name = format!("aria2c{}", std::env::consts::EXE_SUFFIX);
             let bundled = app
                 .path()
@@ -891,8 +897,11 @@ fn main() {
                 }
                 Err(error) => {
                     eprintln!("download engine unavailable: {error}");
-                    let _ = std::fs::create_dir_all(&data_dir)
-                        .and_then(|()| std::fs::write(&engine_error, error.to_string()));
+                    if let Err(persist_error) = std::fs::create_dir_all(&data_dir)
+                        .and_then(|()| std::fs::write(&engine_error, error.to_string()))
+                    {
+                        eprintln!("could not persist the engine startup error: {persist_error}");
+                    }
                     None
                 }
             };
@@ -943,7 +952,6 @@ fn main() {
                 // downloads to this running instance. The token inside is what protects the
                 // endpoint, so the file lives in the user's own app data and nowhere else.
                 let (endpoint, secret) = engine.connection();
-                let handoff = data_dir.join("engine.json");
                 let payload = serde_json::json!({ "endpoint": endpoint, "secret": secret });
                 if let Err(error) = std::fs::create_dir_all(&data_dir)
                     .and_then(|()| std::fs::write(&handoff, payload.to_string()))

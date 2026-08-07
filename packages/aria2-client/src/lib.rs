@@ -341,23 +341,29 @@ impl Aria2 {
         // finite ceiling so slow machines get a working download manager without hiding a
         // genuinely broken sidecar forever.
         for _ in 0..150 {
-            let exited = if let Ok(mut child) = engine.child.lock() {
-                if let Some(child) = child.as_mut() {
-                    match child.try_wait() {
-                        Ok(Some(status)) => {
-                            let mut detail = String::new();
-                            if let Some(mut stderr) = child.stderr.take() {
-                                let _ = stderr.read_to_string(&mut detail);
-                            }
-                            Some((status, detail.trim().to_owned()))
+            let exited = {
+                let mut child = engine.child.lock().map_err(|_| {
+                    Aria2Error::Spawn("could not inspect the download engine process".into())
+                })?;
+                let child = child.as_mut().ok_or_else(|| {
+                    Aria2Error::Spawn("the download engine process handle is missing".into())
+                })?;
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        let mut stderr_bytes = Vec::new();
+                        if let Some(mut stderr) = child.stderr.take() {
+                            let _ = stderr.read_to_end(&mut stderr_bytes);
                         }
-                        _ => None,
+                        let detail = String::from_utf8_lossy(&stderr_bytes).trim().to_owned();
+                        Some((status, detail))
                     }
-                } else {
-                    None
+                    Ok(None) => None,
+                    Err(error) => {
+                        return Err(Aria2Error::Spawn(format!(
+                            "could not inspect the download engine process: {error}"
+                        )));
+                    }
                 }
-            } else {
-                None
             };
             if let Some((status, detail)) = exited {
                 let detail = if detail.is_empty() {
