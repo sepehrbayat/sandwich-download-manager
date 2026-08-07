@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Authors the multi-platform latest.json manifest installed copies poll for updates.
+  Authors the multi-platform latest.json manifest that installed copies poll for updates.
 
 .DESCRIPTION
   Reads the updater artifacts produced by signed Tauri builds for Windows x64, Linux x64,

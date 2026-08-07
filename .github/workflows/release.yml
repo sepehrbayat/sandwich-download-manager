@@ -44,7 +44,7 @@ jobs:
         run: |
           $configured = (Get-Content apps/desktop/tauri.conf.json -Raw | ConvertFrom-Json).version
           $versions = [ordered]@{
-            desktop_crate = (Select-String apps/desktop/Cargo.toml '^version = "(.+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+            desktop_crate = (Select-String -Path apps/desktop/Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
             package = (Get-Content package.json -Raw | ConvertFrom-Json).version
             chromium = (Get-Content extension/manifest.json -Raw | ConvertFrom-Json).version
             firefox = (Get-Content extension/manifest.firefox.json -Raw | ConvertFrom-Json).version
@@ -111,12 +111,6 @@ jobs:
             platform: macos
             artifact: sandwich-release-macos-arm64
     runs-on: ${{ matrix.os }}
-    env:
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -142,6 +136,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install pinned release tooling
+        run: npm ci --no-fund --no-audit
+
       - name: Stage Unix download engine
         if: runner.os != 'Windows'
         shell: bash
@@ -160,6 +157,9 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ -z "$APPLE_CERTIFICATE" ]; then
             if [ "${{ inputs.dry_run }}" != "true" ]; then
@@ -188,6 +188,9 @@ jobs:
 
       - name: Build Windows release packages
         if: runner.os == 'Windows'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           $configs = @(
             "--config", "apps/desktop/tauri.conf.json",
@@ -202,20 +205,29 @@ jobs:
           } else {
             Write-Host "::notice::Authenticode is not configured; updater signatures and published checksums still protect update integrity."
           }
-          npx --yes @tauri-apps/cli@2 build @configs
+          & .\node_modules\.bin\tauri.cmd build @configs
 
       - name: Build Linux release packages
         if: runner.os == 'Linux'
         shell: bash
-        run: npx --yes @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json --config apps/desktop/tauri.linux.conf.json
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: ./node_modules/.bin/tauri build --config apps/desktop/tauri.conf.json --config apps/desktop/tauri.linux.conf.json
 
       - name: Build macOS release packages
         if: runner.os == 'macOS'
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           configs=(--config apps/desktop/tauri.conf.json --config apps/desktop/tauri.macos.conf.json)
           if [ -n "${{ steps.apple.outputs.overlay }}" ]; then configs+=(--config "${{ steps.apple.outputs.overlay }}"); fi
-          npx --yes @tauri-apps/cli@2 build "${configs[@]}"
+          ./node_modules/.bin/tauri build "${configs[@]}"
 
       - name: Verify and smoke Windows installed package
         if: runner.os == 'Windows'
@@ -254,6 +266,7 @@ jobs:
           archive="$(find target/release/bundle/macos -type f -name '*.app.tar.gz' -print -quit)"
           test -n "$app" && test -s "$archive" && test -s "$archive.sig"
           codesign --verify --deep --strict "$app"
+          if [ "${{ inputs.dry_run }}" != "true" ]; then xcrun stapler validate "$app"; fi
           find "$app/Contents/Resources" -type f -name aria2c -print -quit | grep .
           find "$app/Contents/Resources" -type f -name sandwich-browser-host -print -quit | grep .
           executable="$(find "$app/Contents/MacOS" -type f -perm +111 -print -quit)"
@@ -318,7 +331,7 @@ jobs:
       - name: Checksums
         shell: pwsh
         run: |
-          Get-ChildItem release-assets -File |
+          Get-ChildItem release-assets -Recurse -File |
             Where-Object Name -NotIn @("latest.json", "SHA256SUMS.txt") |
             Sort-Object Name |
             ForEach-Object { "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name.Replace(" ", ".") } |
@@ -340,7 +353,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $assets = @(Get-ChildItem release-assets -File | ForEach-Object FullName)
+          $assets = @(Get-ChildItem release-assets -Recurse -File | ForEach-Object FullName)
           gh release create "${{ needs.preflight.outputs.tag }}" $assets `
             --title "Sandwich ${{ needs.preflight.outputs.version }}" `
             --notes "Built together with our GitHub contributors and dedicated to the global open-source community—to everyone seeking code freedom and digital justice." `
