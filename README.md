@@ -70,7 +70,7 @@ are approved, load it unpacked for development:
 2. Chrome or Edge: open `chrome://extensions`, enable **Developer mode**, choose
    **Load unpacked**, and select the `extension` folder. Copy the extension ID it shows.
    Firefox: first package the extension and extract
-   `dist/sandwich-extension-firefox-0.6.0.zip`; then open `about:debugging`, choose
+   `dist/sandwich-extension-firefox-0.6.1.zip`; then open `about:debugging`, choose
    **Load Temporary Add-on**, and select `manifest.json` from the extracted folder.
 3. Register the bridge so the browser is allowed to talk to Sandwich:
 

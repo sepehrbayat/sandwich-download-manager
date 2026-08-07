@@ -4,7 +4,7 @@ members = ["apps/desktop", "packages/aria2-client", "packages/browser-host", "pa
 
 # Shared across every crate so the licence and version stay in one place.
 [workspace.package]
-version = "0.6.0"
+version = "0.6.1"
 edition = "2024"
 license = "GPL-3.0-only"
 repository = "https://github.com/sepehrbayat/sandwich-download-manager"

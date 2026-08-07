@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Sandwich Download Manager",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Send browser downloads and permitted direct media to Sandwich Download Manager.",
   "icons": {
     "48": "icon48.png",
