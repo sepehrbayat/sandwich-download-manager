@@ -107,6 +107,25 @@
 
 * { box-sizing: border-box; }
 
+/* Keep native scrollbars legible without letting the OS' light default cut through a dark
+   tablecloth. Firefox uses the standard properties; WebKitGTK and WebView2 use the pseudo
+   elements below. The inset border keeps the thumb distinct from both track and content. */
+* {
+  scrollbar-color: color-mix(in oklab, var(--ink-soft) 72%, var(--surface)) var(--surface-sunk);
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: var(--surface-sunk); }
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--ink-soft) 72%, var(--surface));
+  border: 2px solid var(--surface-sunk);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--ink-soft) 86%, var(--surface));
+}
+
 /* The hidden attribute only sets display:none in the user-agent stylesheet, so any author
    rule that sets display wins and the element stays on screen. Several elements here are
    grids and flex rows that are toggled with [hidden], so state this once rather than
@@ -508,8 +527,18 @@ button[disabled] { opacity: 0.5; cursor: default; }
   border-radius: var(--radius);
   background: color-mix(in oklab, var(--crust) 12%, var(--surface));
 }
-.clipboard-url { margin: 4px 0 0; font-size: 12.5px; color: var(--ink-soft); word-break: break-all; }
+.clipboard-url {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
 .button-group { display: flex; gap: 8px; flex: none; }
+
+@media (max-width: 760px) {
+  .clipboard-offer { align-items: stretch; flex-direction: column; gap: 10px; }
+  .clipboard-offer .button-group { align-self: flex-end; }
+}
 
 /* ── Queue ─────────────────────────────────────────────────────────────── */
 
