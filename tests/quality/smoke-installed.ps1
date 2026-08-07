@@ -158,6 +158,11 @@ if (-not $handoff) {
     Write-Host "`nApplication stderr:" -ForegroundColor Yellow
     Get-Content $appStderr
   }
+  $engineError = Join-Path $env:APPDATA "dev.sandwich.download-manager\engine-error.log"
+  if (Test-Path $engineError) {
+    Write-Host "`nEngine startup error:" -ForegroundColor Yellow
+    Get-Content $engineError
+  }
   exit 1
 }
 

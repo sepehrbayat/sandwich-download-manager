@@ -883,10 +883,16 @@ fn main() {
                 }
                 None => tauri::async_runtime::block_on(Aria2::start(&session_dir)),
             };
+            let engine_error = data_dir.join("engine-error.log");
             let engine = match started {
-                Ok(engine) => Some(Arc::new(engine)),
+                Ok(engine) => {
+                    let _ = std::fs::remove_file(&engine_error);
+                    Some(Arc::new(engine))
+                }
                 Err(error) => {
                     eprintln!("download engine unavailable: {error}");
+                    let _ = std::fs::create_dir_all(&data_dir)
+                        .and_then(|()| std::fs::write(&engine_error, error.to_string()));
                     None
                 }
             };

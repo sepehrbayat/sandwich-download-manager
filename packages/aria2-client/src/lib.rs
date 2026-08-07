@@ -9,6 +9,7 @@
 use serde::Deserialize;
 use std::{
     hash::{BuildHasher, Hasher, RandomState},
+    io::Read,
     net::TcpListener,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -321,6 +322,10 @@ impl Aria2 {
             endpoint: format!("http://127.0.0.1:{port}/jsonrpc"),
             secret,
             client: reqwest::Client::builder()
+                // This client only talks to Sandwich's private loopback engine. Respecting a
+                // machine-wide HTTP proxy here can route 127.0.0.1 away from the child process
+                // and makes a healthy aria2 look permanently unavailable.
+                .no_proxy()
                 .timeout(Duration::from_secs(20))
                 .build()
                 .map_err(|error| Aria2Error::Spawn(error.to_string()))?,
@@ -336,6 +341,32 @@ impl Aria2 {
         // finite ceiling so slow machines get a working download manager without hiding a
         // genuinely broken sidecar forever.
         for _ in 0..150 {
+            let exited = if let Ok(mut child) = engine.child.lock() {
+                if let Some(child) = child.as_mut() {
+                    match child.try_wait() {
+                        Ok(Some(status)) => {
+                            let mut detail = String::new();
+                            if let Some(mut stderr) = child.stderr.take() {
+                                let _ = stderr.read_to_string(&mut detail);
+                            }
+                            Some((status, detail.trim().to_owned()))
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            if let Some((status, detail)) = exited {
+                let detail = if detail.is_empty() {
+                    format!("aria2c exited with {status}")
+                } else {
+                    format!("aria2c exited with {status}: {detail}")
+                };
+                return Err(Aria2Error::Spawn(detail));
+            }
             if engine
                 .call("aria2.getVersion", serde_json::json!([]))
                 .await
