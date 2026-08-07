@@ -25,8 +25,9 @@ fn main() {
 /// than in `beforeBuildCommand` keeps it out of a shell: the quoting of a chained PowerShell
 /// copy did not survive the round trip and the command was echoed instead of run.
 fn stage_browser_host() {
-    let source = Path::new("../../target/release/sandwich-browser-host.exe");
-    let destination = Path::new("binaries/sandwich-browser-host.exe");
+    let executable = format!("sandwich-browser-host{}", std::env::consts::EXE_SUFFIX);
+    let source = Path::new("../../target/release").join(&executable);
+    let destination = Path::new("binaries").join(&executable);
     println!("cargo:rerun-if-changed={}", source.display());
 
     if !source.exists() {
@@ -39,7 +40,7 @@ fn stage_browser_host() {
     if let Some(parent) = destination.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    if let Err(error) = std::fs::copy(source, destination) {
+    if let Err(error) = std::fs::copy(&source, &destination) {
         // Windows refuses to overwrite a running executable. Say which file, because the
         // bundle failure it causes names only the resource path.
         println!(

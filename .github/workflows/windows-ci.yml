@@ -56,6 +56,11 @@ jobs:
       - name: UI tests
         run: npx playwright test
 
+      - name: Browser extension smoke, lint, and packages
+        run: |
+          npm run test:extension
+          npm run package:extension
+
       - name: Upload UI test traces
         if: failure()
         uses: actions/upload-artifact@v4
@@ -101,4 +106,5 @@ jobs:
           path: |
             target/release/bundle/msi/*.msi
             target/release/bundle/nsis/*-setup.exe
+            dist/sandwich-extension-*.zip
           if-no-files-found: error

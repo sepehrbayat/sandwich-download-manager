@@ -1,17 +1,21 @@
 {
   "name": "sandwich-download-manager-ui",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.6.0",
   "type": "module",
   "scripts": {
     "test": "node --test tests/frontend/*.test.js",
     "serve": "node tests/frontend/serve-ui.js",
     "verify:windows": "powershell -NoProfile -File tests/quality/verify-windows-delivery.ps1 -Mode Check",
     "build:windows": "powershell -NoProfile -File tests/quality/verify-windows-delivery.ps1 -Mode Build",
+    "lint:extension": "node tools/package-extension.mjs --lint-only",
+    "package:extension": "node tools/package-extension.mjs",
+    "test:extension": "node tests/quality/smoke-extension.mjs",
     "test:ui": "playwright test",
-    "test:all": "npm test && npm run test:ui"
+    "test:all": "npm test && npm run lint:extension && npm run test:extension && npm run test:ui"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0"
+    "@playwright/test": "^1.60.0",
+    "web-ext": "10.5.0"
   }
 }

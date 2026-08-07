@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "targets": ["app", "dmg"],
+    "resources": [
+      "binaries/aria2c",
+      "binaries/aria2-COPYING.txt",
+      "binaries/aria2-LICENSE.OpenSSL.txt",
+      "binaries/sandwich-browser-host"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    }
+  }
+}

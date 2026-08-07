@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Sandwich Download Manager",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "identifier": "dev.sandwich.download-manager",
   "build": {
     "frontendDist": "../../src",
@@ -27,56 +27,25 @@
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJCN0E5QjczRkQ5ODZDRDkKUldUWmJKajljNXQ2SytaQVVsR3A1eUMzc2ZaQzVwQWpFeFRSbkc4c0ZNN0FXM0ZqM3dkOC9PeFgK",
       "endpoints": [
         "https://github.com/sepehrbayat/sandwich-download-manager/releases/latest/download/latest.json"
-      ],
-      "windows": {
-        "installMode": "passive"
-      }
+      ]
     }
   },
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "targets": [
-      "msi",
-      "nsis"
-    ],
+    "targets": "all",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/256x256.png",
       "icons/512x512.png",
-      "icons/icon.ico"
+      "icons/icon.icns"
     ],
     "publisher": "Sandwich",
     "copyright": "GPL-3.0-only",
     "category": "Utility",
     "shortDescription": "Free, open-source download manager",
-    "longDescription": "Sandwich is a free and open-source download manager for Windows. It splits each transfer into segments for speed, resumes reliably after interruptions, and keeps a clean, readable queue.",
-    "windows": {
-      "nsis": {
-        "installMode": "currentUser",
-        "languages": [
-          "English"
-        ],
-        "installerIcon": "icons/icon.ico",
-        "headerImage": "installer/nsis-header.bmp",
-        "sidebarImage": "installer/nsis-sidebar.bmp"
-      },
-      "wix": {
-        "bannerPath": "installer/wix-banner.bmp",
-        "dialogImagePath": "installer/wix-dialog.bmp"
-      },
-      "webviewInstallMode": {
-        "type": "embedBootstrapper",
-        "silent": true
-      }
-    },
-    "resources": [
-      "binaries/aria2c.exe",
-      "binaries/aria2-COPYING.txt",
-      "binaries/aria2-LICENSE.OpenSSL.txt",
-      "binaries/sandwich-browser-host.exe"
-    ]
+    "longDescription": "Sandwich is a free and open-source download manager for Windows, macOS, and Linux. It splits each transfer into segments for speed, resumes reliably after interruptions, and keeps a clean, readable queue."
   }
 }

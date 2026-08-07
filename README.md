@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  A free, open-source download manager for Windows.
+  A free, open-source download manager for Windows, macOS and Linux.
 </p>
 
 Internet Download Manager is the tool most Windows users reach for, and it stops being free
@@ -11,10 +11,9 @@ after a trial. Sandwich is the same idea without the licence: segmented download
 resume, and a queue that is actually pleasant to look at — free permanently, source open,
 no subscription and no nag screens.
 
-> **Status: early.** Version 0.5 runs, downloads, keeps to a schedule, limits total transfer
-> speed, updates itself over
-> signed artifacts, and has handled multi-gigabyte transfers — but installers are not yet
-> Authenticode-signed and few people have tested it. Expect rough edges.
+> **Status: early.** Version 0.5 is the current public Windows release. Version 0.6 adds native
+> macOS/Linux packages and store-ready browser extensions; those artifacts remain prerelease
+> until their native CI, signing, and store-review gates pass. Expect rough edges.
 
 ## What it does today
 
@@ -40,8 +39,10 @@ no subscription and no nag screens.
 - **Categories** — downloads grouped by state and file type, with live counts
 - **Keyboard and screen-reader support** throughout
 - **Browser integration** — an extension for Chrome, Edge and Firefox that hands downloads
-  to Sandwich, carrying the page's cookies, referrer and user agent so links behind a login
-  still work
+  to Sandwich. With permission, it can carry the page's cookies, referrer and user agent so
+  links behind a login still work
+- **Direct-media action** — hover or play a direct HTTP(S) video or audio file and a
+  **Download with Sandwich** action appears beside it
 
 ## What it does not do yet
 
@@ -49,37 +50,44 @@ Being straight about this, because these are the reasons you might stay with IDM
 
 - **No per-download bandwidth allocation.** Sandwich can cap total download speed, but cannot
   yet give different transfers their own limits or priorities.
-- **No video capture from streaming sites.** A deliberate exclusion, not an oversight.
-- **Windows only.** The core is portable; macOS and Linux come after Windows is solid.
+- **No YouTube extraction, DRM bypass, or paywall bypass.** The listed browser extension
+  handles direct media that the site exposes as an ordinary HTTP(S) file. Chrome explicitly
+  rejects extensions that facilitate YouTube downloads, so claiming both unrestricted YouTube
+  capture and Chrome Web Store distribution would be misleading.
+- **macOS/Linux are prerelease until their native CI artifacts are signed and installed-smoked.**
+  The repository has native build configurations; the current public release remains Windows.
 - **Installers are not Authenticode-signed**, so Windows SmartScreen warns on first run.
   Choose *More info → Run anyway*. Updates delivered through the app **are** signed and
   verified. See [SIGNING.md](SIGNING.md) for the full picture.
 
 ## Browser extension
 
-The extension lives in `extension/`. It is not in the web stores yet, so it is loaded
-unpacked:
+The extension lives in `extension/`. Separate Chrome, Edge, and Firefox packages are produced
+because Firefox and Chromium use different Manifest V3 background models. Until the listings
+are approved, load it unpacked for development:
 
 1. Install and run Sandwich.
 2. Chrome or Edge: open `chrome://extensions`, enable **Developer mode**, choose
    **Load unpacked**, and select the `extension` folder. Copy the extension ID it shows.
-   Firefox: open `about:debugging`, choose **Load Temporary Add-on**, and select
-   `extension/manifest.json`.
+   Firefox: first package the extension, then open `about:debugging`, choose
+   **Load Temporary Add-on**, and select `manifest.json` inside the Firefox package.
 3. Register the bridge so the browser is allowed to talk to Sandwich:
 
    ```
    cd extension
-   .\register-host.ps1 -ChromeExtensionId <the id from step 2>
+   .\register-host.ps1 -ChromeExtensionId <chrome id> -EdgeExtensionId <edge id>
    ```
 
 Downloads larger than 1 MB are then handed to Sandwich automatically, and any link can be
 sent explicitly with **Download with Sandwich** in the right-click menu. If Sandwich is not
-running, the browser keeps the download rather than losing it.
+running, the browser keeps the download rather than losing it. First-run consent is required;
+cookie forwarding is a separate optional choice.
 
 ## Install
 
-Download the latest installer from the [Releases](../../releases) page and run it. It installs
-per-user, so it does not ask for administrator rights, and it brings everything it needs.
+Download the latest installer from the [Releases](../../releases) page and run it. The current
+public Windows installer installs per-user and brings everything it needs. macOS and Linux
+packages will appear there only after their native release gates pass.
 
 ## Build from source
 
@@ -87,7 +95,7 @@ Requires [Rust](https://rustup.rs) and Node.js.
 
 ```
 cargo test --workspace
-npx @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json --config apps/desktop/tauri.keyless.conf.json
+npx @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json --config apps/desktop/tauri.<platform>.conf.json --config apps/desktop/tauri.keyless.conf.json
 ```
 
 Installers are written to `target/release/bundle/`. The `keyless` overlay skips the updater
@@ -139,3 +147,16 @@ alongside it in `apps/desktop/binaries/`.
 
 Issues and pull requests are welcome. The most useful contribution right now is simply
 running it and reporting what breaks.
+
+## Contributors and dedication
+
+Sandwich is a shared open-source project shaped by its maintainers, contributors, and users.
+Thank you to [Hassan Amini](https://github.com/hassan95eb) for the transfer-limit work and to
+[Sajjad Dehghan](https://github.com/sedwna) for scheduling and release automation, alongside
+maintainer [Sepehr Bayat](https://github.com/sepehrbayat). Their pull requests and review made
+the project materially better.
+
+We dedicate Sandwich to the global open-source community: to builders seeking the freedom to
+read, change, share, and learn from code, and to everyone working toward a more just and
+accessible digital world. That commitment is practical, not ceremonial—the source stays open,
+contributions receive credit, and the software remains free to use.
