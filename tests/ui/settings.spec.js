@@ -53,6 +53,31 @@ test("switching the speed limit off sends aria2's unlimited value", async ({ pag
   await expect.poll(async () => (await savedSettings(page)).speed_limit_bytes).toBe(0);
 });
 
+test("settings writes stay ordered when an older save is slow", async ({ page }) => {
+  await page.evaluate(() => {
+    window.__sandwichSaveCalls = [];
+    window.__sandwichSettingsGate = async (settings) => {
+      window.__sandwichSaveCalls.push(settings.speed_limit_bytes);
+      if (window.__sandwichSaveCalls.length === 1) {
+        await new Promise((resolve) => { window.__releaseFirstSettingsSave = resolve; });
+      }
+    };
+  });
+
+  await page.locator("#open-settings").click();
+  await page.locator("#limit-speed").check();
+  await expect.poll(() => page.evaluate(() => window.__sandwichSaveCalls)).toEqual([1048576]);
+
+  await page.locator("#speed-limit").fill("2");
+  await page.locator("#speed-limit").press("Tab");
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => window.__sandwichSaveCalls)).toEqual([1048576]);
+
+  await page.evaluate(() => window.__releaseFirstSettingsSave());
+  await expect.poll(() => page.evaluate(() => window.__sandwichSaveCalls)).toEqual([1048576, 2097152]);
+  await expect.poll(async () => (await savedSettings(page)).speed_limit_bytes).toBe(2097152);
+});
+
 test("transfer settings stay reachable when a narrow title bar also shows the schedule", async ({ page }) => {
   await page.setViewportSize({ width: 720, height: 700 });
   const tomorrow = Math.floor((Date.now() + 86_400_000) / 1000);

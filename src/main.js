@@ -697,31 +697,38 @@ elements.form.addEventListener("submit", async (event) => {
 });
 
 let dismissSettingsToast = null;
+let settingsSaveQueue = Promise.resolve();
 
-async function persistSettings() {
-  try {
+function settingsSnapshot() {
+  return {
+    destination,
+    organize_by_type: elements.organize.checked,
+    theme,
+    speed_limit_bytes: currentSpeedLimit(),
+    schedule: { ...schedule, days: [...schedule.days] }
+  };
+}
+
+function persistSettings() {
+  // Capture now, then serialize writes. A slow older RPC must never land after a newer snapshot
+  // and overwrite it on disk.
+  const settings = settingsSnapshot();
+  const save = settingsSaveQueue.then(() => bridge.invoke("save_settings", { settings }));
+  settingsSaveQueue = save.catch(() => {});
+
+  return save.then((status) => {
     // The backend applies the schedule as part of saving and hands back what that did, so the
-    // panel can say "downloads start at 02:00" from the same round trip rather than guessing
-    // and being corrected a moment later.
-    const status = await bridge.invoke("save_settings", {
-      settings: {
-        destination,
-        organize_by_type: elements.organize.checked,
-        theme,
-        speed_limit_bytes: currentSpeedLimit(),
-        schedule
-      }
-    });
+    // panel can say "downloads start at 02:00" from the same round trip rather than guessing.
     if (status) showScheduleStatus(status);
     // One quiet receipt, replaced rather than stacked when settings change in a burst.
     dismissSettingsToast?.();
     dismissSettingsToast = toast("Settings saved", { tone: "success" });
-  } catch {
+  }).catch(() => {
     // Preferences are a convenience; failing to store them must not interrupt a download —
     // but it must not be silent either, or the user finds out on the next launch.
     dismissSettingsToast?.();
     dismissSettingsToast = toast("Settings could not be saved — they apply for now but may not survive a restart.", { tone: "error" });
-  }
+  });
 }
 
 elements.chooseFolder.addEventListener("click", async () => {

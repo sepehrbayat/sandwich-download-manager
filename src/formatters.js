@@ -48,9 +48,9 @@ export function speedLimitBytes(amount, unitBytes) {
   const value = Number(amount);
   const unit = Number(unitBytes);
   if (!Number.isFinite(value) || !Number.isFinite(unit) || value <= 0 || unit <= 0) return 0;
-  const bytes = Math.round(value * unit);
+  const bytes = value * unit;
   // JSON numbers above this point cannot round-trip exactly into Rust's u64. Treat an absurd
-  // value as invalid/unlimited rather than applying a surprising, imprecise throttle.
+  // or fractional byte count as invalid/unlimited rather than silently changing the ceiling.
   return Number.isSafeInteger(bytes) && bytes > 0 ? bytes : 0;
 }
 
@@ -63,7 +63,9 @@ export function speedLimitParts(bytes) {
   const unitBytes =
     [SPEED_UNITS.GB, SPEED_UNITS.MB, SPEED_UNITS.KB].find((unit) => value % unit === 0)
     ?? SPEED_UNITS.KB;
-  return { amount: Math.max(1, Math.round(value / unitBytes)), unitBytes };
+  // Powers-of-two units keep every safe integer byte value exact in binary floating point. That
+  // lets an unusual stored ceiling (for example 1500 B/s) survive restore and re-save unchanged.
+  return { amount: value / unitBytes, unitBytes };
 }
 
 export const statusLabels = {

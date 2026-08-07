@@ -4,7 +4,7 @@
 //! rather than blocking startup: a corrupt preferences file must never stop the app from
 //! opening, because the user cannot fix it if they cannot get in.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -19,11 +19,21 @@ pub struct Settings {
     pub theme: String,
     /// Ceiling on the combined speed of every transfer, in bytes per second. Zero is aria2's
     /// own convention for "no limit", so an older settings file remains unlimited.
+    #[serde(deserialize_with = "deserialize_speed_limit_bytes")]
     pub speed_limit_bytes: u64,
     /// When downloads are allowed to run, and how many at a time. Absent from an older
     /// settings file, in which case the default schedule (off) applies — upgrading must never
     /// switch a restriction on behind the user's back.
     pub schedule: crate::schedule::Schedule,
+}
+
+/// A malformed optional limit must not make the rest of a valid settings file disappear.
+fn deserialize_speed_limit_bytes<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(value.as_u64().unwrap_or_default())
 }
 
 /// The aria2 global options owned by preferences rather than by the scheduler.
@@ -121,6 +131,45 @@ mod tests {
         assert_eq!(loaded.theme, "toast");
         assert_eq!(loaded.speed_limit_bytes, 0, "an absent limit is unlimited");
         assert!(!loaded.schedule.enabled);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_malformed_speed_limit_falls_back_without_discarding_other_preferences() {
+        let dir = std::env::temp_dir().join(format!(
+            "sandwich-settings-bad-limit-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        for invalid in ["-1", "1.5", "\"1024\"", "18446744073709551616"] {
+            let raw = format!(
+                r#"{{
+                    "destination": "D:\\Downloads",
+                    "organize_by_type": true,
+                    "theme": "toast",
+                    "speed_limit_bytes": {invalid},
+                    "schedule": {{
+                        "enabled": true,
+                        "start_minute": 540,
+                        "end_minute": 1020,
+                        "days": [true, true, true, true, true, false, false],
+                        "max_concurrent": 4
+                    }}
+                }}"#
+            );
+            std::fs::write(settings_path(&dir), raw).unwrap();
+
+            let loaded = load(&dir);
+            assert_eq!(loaded.speed_limit_bytes, 0, "invalid value: {invalid}");
+            assert_eq!(loaded.destination, "D:\\Downloads");
+            assert!(loaded.organize_by_type);
+            assert_eq!(loaded.theme, "toast");
+            assert!(loaded.schedule.enabled);
+            assert_eq!(loaded.schedule.max_concurrent, 4);
+        }
 
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -51,6 +51,9 @@ test("a speed limit converts to bytes per second, and nonsense means no limit", 
   assert.equal(speedLimitBytes("", SPEED_UNITS.MB), 0);
   assert.equal(speedLimitBytes(Number.NaN, SPEED_UNITS.MB), 0);
   assert.equal(speedLimitBytes(Number.MAX_VALUE, SPEED_UNITS.GB), 0);
+  assert.equal(speedLimitBytes(1.5, SPEED_UNITS.MB), 1572864);
+  assert.equal(speedLimitBytes(0.1, SPEED_UNITS.KB), 0);
+  assert.equal(speedLimitBytes(Number.MAX_SAFE_INTEGER, 2), 0);
 });
 
 test("a stored speed limit comes back in the largest tidy unit", () => {
@@ -59,7 +62,7 @@ test("a stored speed limit comes back in the largest tidy unit", () => {
   assert.deepEqual(speedLimitParts(1073741824), { amount: 1, unitBytes: SPEED_UNITS.GB });
   assert.deepEqual(speedLimitParts(1072693248), { amount: 1023, unitBytes: SPEED_UNITS.MB });
 
-  for (const bytes of [1024, 512000, 1048576, 2097152, 15728640, 1073741824]) {
+  for (const bytes of [1, 1500, 1024, 512000, 1048576, 2097152, 15728640, 1073741824]) {
     const { amount, unitBytes } = speedLimitParts(bytes);
     assert.equal(speedLimitBytes(amount, unitBytes), bytes);
   }

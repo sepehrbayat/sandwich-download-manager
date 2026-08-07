@@ -32,6 +32,7 @@ createServer(async (request, response) => {
         invoke: async (command, payload) => {
           if (command === "load_settings") return window.__sandwichSettings;
           if (command === "save_settings") {
+            await window.__sandwichSettingsGate?.(structuredClone(payload.settings));
             window.__sandwichSettings = payload.settings;
             localStorage.setItem("sandwich-fixture-settings", JSON.stringify(payload.settings));
             return window.__sandwichScheduleStatus;
