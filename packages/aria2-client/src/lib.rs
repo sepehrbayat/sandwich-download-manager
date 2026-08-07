@@ -437,12 +437,24 @@ impl Aria2 {
     /// running past the new cap until something forces a recalculation. Callers that need the
     /// limit honoured immediately have to nudge the excess themselves; see `renegotiate`.
     pub async fn change_global_option(&self, key: &str, value: &str) -> Result<(), Aria2Error> {
-        self.call(
-            "aria2.changeGlobalOption",
-            serde_json::json!([{ key: value }]),
-        )
-        .await
-        .map(|_| ())
+        self.set_global_options(serde_json::json!({ key: value }))
+            .await
+    }
+
+    /// Applies a group of global options to the running engine in one RPC call.
+    ///
+    /// aria2 accepts the total speed ceiling live, so changing it does not require restarting
+    /// the engine and interrupting every transfer already in progress.
+    pub async fn set_global_options(&self, options: serde_json::Value) -> Result<(), Aria2Error> {
+        self.call("aria2.changeGlobalOption", serde_json::json!([options]))
+            .await
+            .map(|_| ())
+    }
+
+    /// The engine's current global options, kept as strings exactly as aria2 reports them.
+    pub async fn global_options(&self) -> Result<serde_json::Value, Aria2Error> {
+        self.call("aria2.getGlobalOption", serde_json::json!([]))
+            .await
     }
 
     /// Puts a running transfer back through the engine's queueing decision.

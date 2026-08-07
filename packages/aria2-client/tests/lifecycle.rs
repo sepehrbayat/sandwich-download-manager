@@ -267,6 +267,39 @@ async fn lowering_the_concurrency_cap_demotes_running_transfers_to_waiting() {
 }
 
 #[tokio::test]
+async fn a_total_speed_limit_reaches_the_running_engine_over_rpc() {
+    if !aria2_available() {
+        eprintln!("skipping: aria2c not installed");
+        return;
+    }
+    let temp = std::env::temp_dir().join(format!("sandwich-aria2-options-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&temp);
+    let _ = std::fs::create_dir_all(&temp);
+
+    let engine = Aria2::start(&temp).await.expect("engine should start");
+    let before = engine.global_options().await.expect("options readable");
+    assert_eq!(before["max-overall-download-limit"], "0");
+
+    engine
+        .set_global_options(serde_json::json!({
+            "max-overall-download-limit": "512000",
+        }))
+        .await
+        .expect("engine should accept a live speed limit");
+    let limited = engine.global_options().await.expect("options readable");
+    assert_eq!(limited["max-overall-download-limit"], "512000");
+
+    engine
+        .set_global_options(serde_json::json!({ "max-overall-download-limit": "0" }))
+        .await
+        .expect("engine should remove the limit without a restart");
+    let cleared = engine.global_options().await.expect("options readable");
+    assert_eq!(cleared["max-overall-download-limit"], "0");
+
+    let _ = std::fs::remove_dir_all(&temp);
+}
+
+#[tokio::test]
 async fn a_cancel_reaches_disk_before_any_shutdown() {
     // The engine only ever dies by Job Object kill - there is no graceful exit in
     // production. So a cancel must be IN THE SESSION FILE the moment the call returns:

@@ -363,6 +363,16 @@ input[type="url"]:focus { border-color: var(--crust); outline: none; }
 #destination { display: block; font-size: 12.5px; color: var(--ink-soft); }
 .check-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-weight: 400; }
 
+/* ── Settings ──────────────────────────────────────────────────────────── */
+
+.setting-row + .setting-row {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.setting-row > .check-row:first-child { margin-top: 0; }
+.limit-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+
 /* ── Schedule ──────────────────────────────────────────────────────────────
  * A queue that has stopped itself must never look like one that has broken, so the schedule
  * gets a permanent seat in the title bar whenever it is the reason nothing is moving. */
@@ -445,9 +455,6 @@ input[type="time"]:focus, input[type="number"]:focus { border-color: var(--crust
   border-color: color-mix(in oklab, var(--crust) 55%, var(--line));
 }
 .day-choice:has(input:focus-visible) { outline: 2px solid var(--crust-deep); outline-offset: 1px; }
-
-.concurrency-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
-.concurrency-row .help { flex-basis: 100%; margin-top: 0; }
 
 /* ── Buttons ───────────────────────────────────────────────────────────── */
 

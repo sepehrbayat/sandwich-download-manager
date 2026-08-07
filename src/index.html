@@ -54,6 +54,9 @@
       </button>
 
       <div class="titlebar-actions">
+        <button class="secondary" id="open-settings" type="button" aria-expanded="false" aria-controls="settings">
+          Settings
+        </button>
         <button class="secondary" id="open-schedule" type="button">
           <span aria-hidden="true">◷</span> Schedule
         </button>
@@ -167,7 +170,51 @@
           </form>
         </section>
 
-        <!-- Schedule panel: when downloads may run, and how many at once -->
+        <!-- One home for transfer limits. Concurrency still belongs to the scheduler in Rust,
+             but exposing it here prevents two controls from fighting over the same value. -->
+        <section class="panel settings-panel" id="settings" aria-labelledby="settings-title" hidden>
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Settings</p>
+              <h2 id="settings-title">Transfer limits</h2>
+            </div>
+            <button class="quiet" id="close-settings" type="button">Close</button>
+          </div>
+
+          <div class="setting-row">
+            <label class="check-row" for="limit-speed">
+              <input id="limit-speed" type="checkbox" />
+              Limit total download speed
+            </label>
+            <div class="limit-row" id="speed-limit-controls" hidden>
+              <label class="sr-only" for="speed-limit">Speed limit amount</label>
+              <input id="speed-limit" type="number" min="1" step="1" value="1"
+                     inputmode="numeric" aria-describedby="speed-limit-help" />
+              <label class="sr-only" for="speed-unit">Speed limit unit</label>
+              <select id="speed-unit" class="sort">
+                <option value="1024">KB/s</option>
+                <option value="1048576" selected>MB/s</option>
+                <option value="1073741824">GB/s</option>
+              </select>
+            </div>
+            <p class="help" id="speed-limit-help">
+              Shared across every transfer and applied immediately, including downloads already running.
+            </p>
+          </div>
+
+          <div class="setting-row">
+            <label for="schedule-concurrent">Downloads at once</label>
+            <div class="limit-row">
+              <input id="schedule-concurrent" type="number" min="1" max="16" step="1"
+                     value="5" inputmode="numeric" aria-describedby="max-concurrent-help" />
+            </div>
+            <p class="help" id="max-concurrent-help">
+              Anything past this waits in the queue. Four or five is usually fastest.
+            </p>
+          </div>
+        </section>
+
+        <!-- Schedule panel: the hours and days when downloads may run -->
         <section class="panel schedule-panel" id="schedule" aria-labelledby="schedule-title" hidden>
           <div class="section-heading">
             <div>
@@ -210,14 +257,6 @@
             <p class="error" id="schedule-error" role="alert" hidden></p>
           </fieldset>
 
-          <div class="concurrency-row">
-            <label for="schedule-concurrent">Download at once</label>
-            <input id="schedule-concurrent" type="number" min="1" max="16" step="1" inputmode="numeric" />
-            <p class="help">
-              The rest wait their turn. Four or five is usually fastest — beyond that they only
-              divide the same connection between them.
-            </p>
-          </div>
         </section>
 
         <aside id="clipboard-offer" class="clipboard-offer" aria-labelledby="clipboard-title" hidden>

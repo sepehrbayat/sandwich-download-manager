@@ -46,8 +46,8 @@ no subscription and no nag screens.
 
 Being straight about this, because these are the reasons you might stay with IDM:
 
-- **No bandwidth limiting.** Downloads can be confined to certain hours, but not to a certain
-  speed, so a transfer inside the window still takes the whole pipe.
+- **No per-download bandwidth allocation.** Sandwich can cap total download speed, but cannot
+  yet give different transfers their own limits or priorities.
 - **No video capture from streaming sites.** A deliberate exclusion, not an oversight.
 - **Windows only.** The core is portable; macOS and Linux come after Windows is solid.
 - **Installers are not Authenticode-signed**, so Windows SmartScreen warns on first run.

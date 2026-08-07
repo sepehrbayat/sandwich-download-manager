@@ -274,21 +274,25 @@ async fn save_settings(
     settings: settings::Settings,
 ) -> Result<ScheduleStatus, String> {
     let normalized = settings.schedule.normalized();
-    settings::save(
-        &state.config_dir,
-        &settings::Settings {
-            schedule: normalized.clone(),
-            ..settings
-        },
-    )
-    .map_err(|error| error.to_string())?;
+    let normalized_settings = settings::Settings {
+        schedule: normalized.clone(),
+        ..settings
+    };
+    settings::save(&state.config_dir, &normalized_settings).map_err(|error| error.to_string())?;
     if let Ok(mut current) = state.schedule.lock() {
         *current = normalized;
     }
-    // Apply it now rather than at the next tick. A user who has just moved the window to
-    // "starts in one minute" should not watch a still queue for twenty seconds wondering
-    // whether the setting took.
+    // Apply both kinds of limit now. The speed ceiling reaches active transfers through RPC;
+    // the scheduler applies and, when needed, renegotiates the concurrency cap.
     if let Some(engine) = state.engine.as_ref() {
+        if let Err(error) = engine
+            .set_global_options(settings::engine_options(&normalized_settings))
+            .await
+        {
+            // Saving is the command's durable promise. An unavailable engine already has a
+            // visible banner, and the stored choice will be replayed on the next launch.
+            eprintln!("could not apply transfer preferences: {error}");
+        }
         apply_schedule(engine, &state.schedule, &state.held).await;
     }
     Ok(schedule_snapshot(&state.schedule, &state.held))
@@ -595,6 +599,17 @@ async fn apply_schedule(engine: &Aria2, schedule: &Mutex<Schedule>, held: &Mutex
         .map(|value| value.clone())
         .unwrap_or_default();
     let open = current.is_open_at(Local::now());
+    // A closed window normally pauses everything, but the user can explicitly start one item
+    // anyway. Keep the engine's promotion limit current even in that state, so overrides do
+    // not fall back to aria2's default until the window opens again.
+    if !open {
+        let _ = engine
+            .change_global_option(
+                "max-concurrent-downloads",
+                &current.max_concurrent.to_string(),
+            )
+            .await;
+    }
     let Ok(all) = engine.all().await else {
         return;
     };
@@ -873,10 +888,18 @@ fn main() {
             };
             let history = Arc::new(Mutex::new(HistoryStore::load(&data_dir)));
             let held = Arc::new(Mutex::new(HeldStore::load(&data_dir)));
+            let stored_settings = settings::load(&data_dir);
             // The window is read once here and kept in memory; the settings file stays the
             // durable copy, but the ticker and the poller must not go to disk to consult it.
-            let schedule = Arc::new(Mutex::new(settings::load(&data_dir).schedule.normalized()));
+            let schedule = Arc::new(Mutex::new(stored_settings.schedule.normalized()));
             if let Some(engine) = engine.as_ref() {
+                // aria2 starts with its own unlimited default. Replay the persisted ceiling
+                // before the first frame so an update or restart cannot silently drop it.
+                if let Err(error) = tauri::async_runtime::block_on(
+                    engine.set_global_options(settings::engine_options(&stored_settings)),
+                ) {
+                    eprintln!("could not apply stored transfer preferences: {error}");
+                }
                 // Trim both sidecars to what the engine still knows, so they track the queue
                 // instead of growing forever.
                 if let Ok(all) = tauri::async_runtime::block_on(engine.all()) {

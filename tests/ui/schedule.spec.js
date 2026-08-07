@@ -53,7 +53,8 @@ test("the window controls stay inert until the window is switched on", async ({ 
 
   await page.locator("#schedule-enabled").check();
   await expect(page.locator("#schedule-start")).toBeEnabled();
-  // "How many at once" applies whether or not the hours are restricted, so it is never off.
+  // "How many at once" is a transfer limit, so it remains live outside the schedule panel.
+  await page.locator("#open-settings").click();
   await expect(page.locator("#schedule-concurrent")).toBeEnabled();
 });
 
@@ -93,15 +94,17 @@ test("a schedule with no days ticked says so instead of silently downloading not
 });
 
 test("the simultaneous-downloads figure is clamped to something workable", async ({ page }) => {
-  await page.locator("#open-schedule").click();
+  await page.locator("#open-settings").click();
   await page.locator("#schedule-concurrent").fill("99");
   await page.locator("#schedule-concurrent").blur();
   await expect.poll(() => savedSchedule(page)).toMatchObject({ max_concurrent: 16 });
+  await expect(page.locator("#schedule-concurrent")).toHaveValue("16");
 
   // Zero at once is a stopped queue with no way to tell that is what you asked for.
   await page.locator("#schedule-concurrent").fill("0");
   await page.locator("#schedule-concurrent").blur();
   await expect.poll(() => savedSchedule(page)).toMatchObject({ max_concurrent: 1 });
+  await expect(page.locator("#schedule-concurrent")).toHaveValue("1");
 });
 
 test("a closed window explains itself in the title bar and opens the panel when clicked", async ({ page }) => {
@@ -195,6 +198,7 @@ test("a stored schedule is what the panel opens showing", async ({ page }) => {
   await expect(page.locator("#schedule-enabled")).toBeChecked();
   await expect(page.locator("#schedule-start")).toHaveValue("23:30");
   await expect(page.locator("#schedule-end")).toHaveValue("06:00");
+  await page.locator("#open-settings").click();
   await expect(page.locator("#schedule-concurrent")).toHaveValue("2");
   await expect(page.getByRole("checkbox", { name: "Friday" })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Saturday" })).not.toBeChecked();

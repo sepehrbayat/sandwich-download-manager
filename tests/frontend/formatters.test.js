@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { describeError, formatBytes, formatEta, progressPercent, sourceHost, statusLabels } from "../../src/formatters.js";
+import {
+  describeError, formatBytes, formatEta, progressPercent, sourceHost, SPEED_UNITS,
+  speedLimitBytes, speedLimitParts, statusLabels
+} from "../../src/formatters.js";
 
 test("formats transfer metrics without misleading invalid values", () => {
   assert.equal(formatBytes(1536), "1.5 KB");
@@ -35,6 +38,32 @@ test("explains engine-level failures from aria2's exit code", () => {
   assert.match(describeError({ code: 9, message: "There is not enough disk space available." }).headline, /disk space/i);
   assert.match(describeError({ code: 6, message: "Network problem has occurred." }).headline, /network/i);
   assert.match(describeError({ code: 3, message: "Resource not found" }).headline, /not found/i);
+});
+
+test("a speed limit converts to bytes per second, and nonsense means no limit", () => {
+  assert.equal(speedLimitBytes(2, SPEED_UNITS.MB), 2097152);
+  assert.equal(speedLimitBytes(500, SPEED_UNITS.KB), 512000);
+  assert.equal(speedLimitBytes(3, SPEED_UNITS.GB), 3221225472);
+
+  // Invalid input must never become an accidental near-zero throttle.
+  assert.equal(speedLimitBytes(0, SPEED_UNITS.MB), 0);
+  assert.equal(speedLimitBytes(-5, SPEED_UNITS.MB), 0);
+  assert.equal(speedLimitBytes("", SPEED_UNITS.MB), 0);
+  assert.equal(speedLimitBytes(Number.NaN, SPEED_UNITS.MB), 0);
+  assert.equal(speedLimitBytes(Number.MAX_VALUE, SPEED_UNITS.GB), 0);
+});
+
+test("a stored speed limit comes back in the largest tidy unit", () => {
+  assert.deepEqual(speedLimitParts(2097152), { amount: 2, unitBytes: SPEED_UNITS.MB });
+  assert.deepEqual(speedLimitParts(512000), { amount: 500, unitBytes: SPEED_UNITS.KB });
+  assert.deepEqual(speedLimitParts(1073741824), { amount: 1, unitBytes: SPEED_UNITS.GB });
+  assert.deepEqual(speedLimitParts(1072693248), { amount: 1023, unitBytes: SPEED_UNITS.MB });
+
+  for (const bytes of [1024, 512000, 1048576, 2097152, 15728640, 1073741824]) {
+    const { amount, unitBytes } = speedLimitParts(bytes);
+    assert.equal(speedLimitBytes(amount, unitBytes), bytes);
+  }
+  assert.deepEqual(speedLimitParts(0), { amount: 1, unitBytes: SPEED_UNITS.MB });
 });
 
 test("an unrecognised failure still gets a calm headline and keeps the detail as the hint", () => {

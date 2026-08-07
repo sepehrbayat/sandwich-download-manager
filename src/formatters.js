@@ -40,6 +40,32 @@ export function orderedCells(capacity, completed, total) {
   return { full, partial: full >= capacity ? 0 : exact - full };
 }
 
+/** Units offered by the total-speed control, expressed as bytes per second. */
+export const SPEED_UNITS = { KB: 1024, MB: 1024 * 1024, GB: 1024 * 1024 * 1024 };
+
+/** Converts an amount and unit to aria2's byte ceiling, or zero for unlimited. */
+export function speedLimitBytes(amount, unitBytes) {
+  const value = Number(amount);
+  const unit = Number(unitBytes);
+  if (!Number.isFinite(value) || !Number.isFinite(unit) || value <= 0 || unit <= 0) return 0;
+  const bytes = Math.round(value * unit);
+  // JSON numbers above this point cannot round-trip exactly into Rust's u64. Treat an absurd
+  // value as invalid/unlimited rather than applying a surprising, imprecise throttle.
+  return Number.isSafeInteger(bytes) && bytes > 0 ? bytes : 0;
+}
+
+/** Returns the largest tidy unit for a stored byte ceiling. */
+export function speedLimitParts(bytes) {
+  const value = Number(bytes);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    return { amount: 1, unitBytes: SPEED_UNITS.MB };
+  }
+  const unitBytes =
+    [SPEED_UNITS.GB, SPEED_UNITS.MB, SPEED_UNITS.KB].find((unit) => value % unit === 0)
+    ?? SPEED_UNITS.KB;
+  return { amount: Math.max(1, Math.round(value / unitBytes)), unitBytes };
+}
+
 export const statusLabels = {
   queued: "Queued",
   active: "Downloading",
@@ -113,8 +139,11 @@ export function relativeDay(epochSeconds, nowMs) {
   const days = Math.round((startOf(then) - startOf(now)) / 86_400_000);
   if (days <= 0) return "today";
   if (days === 1) return "tomorrow";
-  if (days < 7) return then.toLocaleDateString(undefined, { weekday: "long" });
-  return then.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  // The surrounding interface is English. Pin the language while keeping local calendar-day
+  // arithmetic, otherwise a Persian or German Windows locale injects one foreign word into an
+  // otherwise English sentence and makes the same build behave differently across machines.
+  if (days < 7) return then.toLocaleDateString("en-US", { weekday: "long" });
+  return then.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 export function formatClockTime(epochSeconds) {

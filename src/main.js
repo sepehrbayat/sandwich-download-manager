@@ -1,6 +1,7 @@
 import {
   WEEKDAYS, clockToMinutes, dateGroup, describeError, formatBytes, formatEta, minutesToClock,
-  orderedCells, progressPercent, scheduleSummary, sourceHost, statusLabel
+  orderedCells, progressPercent, scheduleSummary, sourceHost, speedLimitBytes, speedLimitParts,
+  statusLabel
 } from "./formatters.js";
 import { confirmDialog, messageDialog, toast } from "./feedback.js";
 
@@ -31,6 +32,13 @@ const elements = {
   destination: document.querySelector("#destination"),
   chooseFolder: document.querySelector("#choose-folder"),
   organize: document.querySelector("#organize"),
+  settingsPanel: document.querySelector("#settings"),
+  openSettings: document.querySelector("#open-settings"),
+  closeSettings: document.querySelector("#close-settings"),
+  limitSpeed: document.querySelector("#limit-speed"),
+  speedLimitControls: document.querySelector("#speed-limit-controls"),
+  speedLimit: document.querySelector("#speed-limit"),
+  speedUnit: document.querySelector("#speed-unit"),
   list: document.querySelector("#download-list"),
   empty: document.querySelector("#empty-state"),
   emptyTitle: document.querySelector("#empty-state .empty-title"),
@@ -696,7 +704,13 @@ async function persistSettings() {
     // panel can say "downloads start at 02:00" from the same round trip rather than guessing
     // and being corrected a moment later.
     const status = await bridge.invoke("save_settings", {
-      settings: { destination, organize_by_type: elements.organize.checked, theme, schedule }
+      settings: {
+        destination,
+        organize_by_type: elements.organize.checked,
+        theme,
+        speed_limit_bytes: currentSpeedLimit(),
+        schedule
+      }
     });
     if (status) showScheduleStatus(status);
     // One quiet receipt, replaced rather than stacked when settings change in a burst.
@@ -724,6 +738,51 @@ elements.chooseFolder.addEventListener("click", async () => {
 });
 
 elements.organize.addEventListener("change", persistSettings);
+
+/* ── Transfer limits ────────────────────────────────────────────────────── */
+
+/** Zero when switched off, which is aria2's own value for unlimited. */
+function currentSpeedLimit() {
+  if (!elements.limitSpeed.checked) return 0;
+  return speedLimitBytes(elements.speedLimit.value, elements.speedUnit.value);
+}
+
+/** Paints a stored byte ceiling back as a readable amount and unit. */
+function showSpeedLimit(bytes) {
+  const value = Number(bytes);
+  const limited = Number.isSafeInteger(value) && value > 0;
+  elements.limitSpeed.checked = limited;
+  elements.speedLimitControls.hidden = !limited;
+  const { amount, unitBytes } = speedLimitParts(limited ? value : 0);
+  elements.speedLimit.value = String(amount);
+  elements.speedUnit.value = String(unitBytes);
+}
+
+elements.openSettings.addEventListener("click", () => {
+  const opening = elements.settingsPanel.hidden;
+  elements.settingsPanel.hidden = !opening;
+  elements.openSettings.setAttribute("aria-expanded", String(opening));
+  if (opening) elements.limitSpeed.focus();
+});
+elements.closeSettings.addEventListener("click", () => {
+  elements.settingsPanel.hidden = true;
+  elements.openSettings.setAttribute("aria-expanded", "false");
+  elements.openSettings.focus();
+});
+
+elements.limitSpeed.addEventListener("change", () => {
+  elements.speedLimitControls.hidden = !elements.limitSpeed.checked;
+  if (elements.limitSpeed.checked) elements.speedLimit.focus();
+  persistSettings();
+});
+
+// Commit completed edits rather than every keystroke: typing 500 must not briefly apply 5 B/s.
+for (const control of [elements.speedLimit, elements.speedUnit]) {
+  control.addEventListener("change", () => {
+    if (elements.limitSpeed.checked) showSpeedLimit(currentSpeedLimit());
+    persistSettings();
+  });
+}
 
 /* ── Schedule ───────────────────────────────────────────────────────────── */
 
@@ -753,8 +812,8 @@ function showSchedule() {
   elements.scheduleConcurrent.value = String(schedule.max_concurrent);
   dayBoxes.forEach((box, index) => { box.checked = Boolean(schedule.days[index]); });
   // The window controls are meaningless while the window is off, and a disabled fieldset says
-  // so in a way both a mouse and a screen reader understand. "How many at once" stays live —
-  // it applies whether or not the hours are restricted.
+  // so in a way both a mouse and a screen reader understand. Concurrency lives in Transfer
+  // limits because it applies whether or not the hours are restricted.
   elements.scheduleWindow.disabled = !schedule.enabled;
 }
 
@@ -799,6 +858,8 @@ function commitSchedule() {
   elements.scheduleError.textContent = problem;
   elements.scheduleError.hidden = !problem;
   schedule = next;
+  // Show the normalized value instead of leaving the field to disagree with the backend.
+  elements.scheduleConcurrent.value = String(schedule.max_concurrent);
   elements.scheduleWindow.disabled = !schedule.enabled;
   persistSettings();
 }
@@ -1019,6 +1080,7 @@ async function restoreSettings() {
       elements.destination.textContent = stored.destination;
     }
     elements.organize.checked = Boolean(stored?.organize_by_type);
+    showSpeedLimit(stored?.speed_limit_bytes ?? 0);
     // The Rust store is the durable truth; the localStorage mirror only bridged the gap
     // until this load finished.
     if (stored?.theme) applyTheme(stored.theme);

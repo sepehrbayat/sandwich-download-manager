@@ -13,20 +13,27 @@ createServer(async (request, response) => {
     let content = await readFile(path);
     if (relative === "index.html" && url.searchParams.has("fixture")) {
       const fixture = `<script>
-      // Schedule state the tests can rewrite before the UI asks for it. Kept on window rather
-      // than closed over so a spec can put the app in "window shut" without a backend.
-      // Assigned only if nothing put them there first, so a test can seed stored settings
-      // before the page loads and exercise the real "restore on startup" path.
-      window.__sandwichSettings ??= {
+      const defaultSettings = {
         destination: "", organize_by_type: false, theme: "",
+        speed_limit_bytes: 0,
         schedule: { enabled: false, start_minute: 120, end_minute: 420, days: [true, true, true, true, true, true, true], max_concurrent: 5 }
       };
+      const storedSettings = () => {
+        try {
+          const stored = JSON.parse(localStorage.getItem("sandwich-fixture-settings") ?? "{}");
+          return { ...defaultSettings, ...stored, schedule: { ...defaultSettings.schedule, ...stored.schedule } };
+        } catch { return { ...defaultSettings, schedule: { ...defaultSettings.schedule } }; }
+      };
+      // Specs can seed the backend view before startup. Otherwise localStorage stands in for
+      // settings.json so a reload proves transfer limits really survive one.
+      window.__sandwichSettings ??= storedSettings();
       window.__sandwichScheduleStatus ??= { enabled: false, open: true, waiting: 0 };
       window.__SANDWICH_TEST_BRIDGE__ = {
         invoke: async (command, payload) => {
           if (command === "load_settings") return window.__sandwichSettings;
           if (command === "save_settings") {
             window.__sandwichSettings = payload.settings;
+            localStorage.setItem("sandwich-fixture-settings", JSON.stringify(payload.settings));
             return window.__sandwichScheduleStatus;
           }
           if (command === "schedule_status") return window.__sandwichScheduleStatus;
