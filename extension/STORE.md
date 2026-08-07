@@ -10,9 +10,9 @@ npm run package:extension
 
 The output is:
 
-- `dist/sandwich-extension-chrome-0.6.0.zip`
-- `dist/sandwich-extension-edge-0.6.0.zip`
-- `dist/sandwich-extension-firefox-0.6.0.zip`
+- `dist/sandwich-extension-chrome-0.6.1.zip`
+- `dist/sandwich-extension-edge-0.6.1.zip`
+- `dist/sandwich-extension-firefox-0.6.1.zip`
 
 Do not upload one browser's ZIP to another store. Chromium uses a service worker; Firefox uses
 background scripts and Mozilla-specific data declarations. `npm run package:extension` runs
@@ -88,7 +88,7 @@ project servers. See `PRIVACY.md`.
 
 ## Reviewer test instructions
 
-1. Install and open Sandwich Download Manager 0.6.0.
+1. Install and open Sandwich Download Manager 0.6.1.
 2. Install the submitted extension and approve URL sharing on the onboarding page. Leave cookie
    sharing off for the basic test.
 3. Open a page containing an HTML `<video>` whose `src` is an ordinary HTTPS MP4/WebM file.

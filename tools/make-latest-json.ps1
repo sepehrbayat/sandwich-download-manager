@@ -11,7 +11,7 @@
   be attached to every GitHub release as latest.json so older installs keep receiving updates.
 
 .EXAMPLE
-  pwsh -File tools/make-latest-json.ps1 -Version 0.6.0 -ArtifactRoot release-assets
+  pwsh -File tools/make-latest-json.ps1 -Version 0.6.1 -ArtifactRoot release-assets
 #>
 [CmdletBinding()]
 param(
