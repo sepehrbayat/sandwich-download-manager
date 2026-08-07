@@ -1,15 +1,17 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { copyFile, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import JSZip from "jszip";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const source = join(root, "extension");
 const dist = join(root, "dist");
 const webExt = join(root, "node_modules", "web-ext", "bin", "web-ext.js");
 const lintOnly = process.argv.includes("--lint-only");
+const reproducibleTimestamp = new Date("2000-01-01T00:00:00.000Z");
 
 const runtimeFiles = [
   "background.js",
@@ -41,9 +43,38 @@ function runWebExt(args) {
 
 async function stage(manifestName, label) {
   const staging = await mkdtemp(join(tmpdir(), `sandwich-extension-${label}-`));
-  for (const file of runtimeFiles) await cp(join(source, file), join(staging, file));
-  await copyFile(join(source, manifestName), join(staging, "manifest.json"));
+  for (const file of runtimeFiles) await stageFile(file, file, staging);
+  await stageFile(manifestName, "manifest.json", staging);
   return staging;
+}
+
+async function stageFile(sourceName, destinationName, staging) {
+  const input = await readFile(join(source, sourceName));
+  const output = /\.(?:html|js|json)$/.test(sourceName)
+    ? Buffer.from(input.toString("utf8").replace(/\r\n?/g, "\n"), "utf8")
+    : input;
+  const destination = join(staging, destinationName);
+  await writeFile(destination, output);
+  await chmod(destination, 0o644);
+  await utimes(destination, reproducibleTimestamp, reproducibleTimestamp);
+}
+
+async function buildArchive(staging, destination) {
+  const zip = new JSZip();
+  for (const file of ["manifest.json", ...runtimeFiles].sort()) {
+    zip.file(file, await readFile(join(staging, file)), {
+      date: reproducibleTimestamp,
+      createFolders: false,
+      unixPermissions: 0o100644
+    });
+  }
+  const bytes = await zip.generateAsync({
+    type: "nodebuffer",
+    platform: "UNIX",
+    compression: "DEFLATE",
+    compressionOptions: { level: 9 }
+  });
+  await writeFile(destination, bytes);
 }
 
 const firefoxStage = await stage("manifest.firefox.json", "firefox");
@@ -57,8 +88,8 @@ try {
       const chromiumName = `sandwich-extension-chrome-${version}.zip`;
       const firefoxName = `sandwich-extension-firefox-${version}.zip`;
       const edgeName = `sandwich-extension-edge-${version}.zip`;
-      await runWebExt(["build", "--source-dir", chromiumStage, "--artifacts-dir", dist, "--filename", chromiumName, "--overwrite-dest"]);
-      await runWebExt(["build", "--source-dir", firefoxStage, "--artifacts-dir", dist, "--filename", firefoxName, "--overwrite-dest"]);
+      await buildArchive(chromiumStage, join(dist, chromiumName));
+      await buildArchive(firefoxStage, join(dist, firefoxName));
       await copyFile(join(dist, chromiumName), join(dist, edgeName));
 
       for (const name of [chromiumName, edgeName, firefoxName]) {
