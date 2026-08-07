@@ -1,79 +1,136 @@
-# Store submission kit
+# Browser-store submission kit
 
-Everything needed to publish the extension, so submission day is paste-and-click. Build the
-package first:
+This kit covers Chrome Web Store, Microsoft Edge Add-ons, and Firefox AMO. Build and validate
+the three store-specific packages with:
 
+```powershell
+npm ci
+npm run package:extension
 ```
-powershell -ExecutionPolicy Bypass -File tools/package-extension.ps1
-```
 
-One zip serves all three stores. Accounts are the only thing this kit cannot provide:
-Chrome Web Store charges a one-time $5 developer fee; Edge Add-ons and Firefox AMO are free.
+The output is:
 
-**After publication**, two follow-ups matter:
-1. The store-assigned extension ID becomes permanent. Bake it into `register-host.ps1` as the
-   default `-ChromeExtensionId`, and have the Sandwich installer register the native host with
-   that ID — the manual registration step disappears for users.
-2. Update README's "Browser extension" section to point at the store pages.
+- `dist/sandwich-extension-chrome-0.6.0.zip`
+- `dist/sandwich-extension-edge-0.6.0.zip`
+- `dist/sandwich-extension-firefox-0.6.0.zip`
+
+Do not upload one browser's ZIP to another store. Chromium uses a service worker; Firefox uses
+background scripts and Mozilla-specific data declarations. `npm run package:extension` runs
+Mozilla's validator and fails on errors, warnings, or notices.
+
+## Owner account gates
+
+The code cannot create or verify accounts in the owner's legal identity:
+
+1. **Chrome Web Store:** register the intended permanent Google account and pay the one-time
+   **US$5** developer fee in the Developer Dashboard.
+2. **Microsoft Edge Add-ons:** enroll the intended Microsoft account in the Edge program in
+   Partner Center. Microsoft currently charges no registration fee, but verifies the account.
+3. **Firefox AMO:** sign in with the intended Mozilla account, set its public developer display
+   name, and accept the distribution agreement. Mozilla documents no registration payment.
+
+Create Chrome and Edge draft listings before the final desktop release. Each store assigns a
+different extension ID. Put those IDs into the native-host registration defaults and rebuild
+the signed desktop installers; otherwise users must register the bridge manually.
 
 ## Listing copy
 
 **Name:** Sandwich Download Manager
 
-**Summary (short):**
-Send downloads to Sandwich — the free, open-source download manager for Windows.
+**Short summary:**
+
+Send browser downloads and permitted direct media to the free, open-source Sandwich app.
 
 **Description:**
 
-Sandwich is a free, open-source download manager for Windows. This extension connects it to
-your browser.
+Sandwich connects your browser to the free, open-source Sandwich Download Manager for Windows,
+macOS, and Linux.
 
-- Downloads larger than 1 MB are handed to Sandwich automatically, where they run segmented,
-  resumable, and pause-safe.
-- Right-click any link, video, audio or image → **Download with Sandwich**.
-- Your session travels with the download: cookies, referrer and user agent go along, so
-  links that need a login work in Sandwich exactly as they do in the browser.
-- If Sandwich isn't running, the browser keeps the download. A failed hand-off never costs
-  you a file.
+- Send any link explicitly with **Download with Sandwich**.
+- Hand larger browser downloads to Sandwich for segmented, resumable transfer.
+- See a download action beside video or audio when the page exposes a direct HTTP(S) media file.
+- Optionally include cookies from the download's own site for files behind a login.
+- Keep the browser download when the desktop app is unavailable; a failed hand-off never loses
+  the file.
 
-Requires the Sandwich desktop app (free, GPL-3.0):
-https://github.com/sepehrbayat/sandwich-download-manager
+The extension requires first-run consent, has no analytics or advertising, and communicates
+only with the Sandwich app installed on the same computer. It does not extract YouTube, bypass
+DRM, or bypass paywalls. Download only material you own or are permitted to save.
 
-**Category:** Productivity (Chrome/Edge) · Download Management (AMO)
+Desktop app and source code:
+<https://github.com/sepehrbayat/sandwich-download-manager>
+
+**Category:** Productivity (Chrome/Edge); Download Management (Firefox)
+
+**Privacy policy:**
+<https://github.com/sepehrbayat/sandwich-download-manager/blob/main/PRIVACY.md>
 
 ## Permission justifications
 
-Reviewers ask for these one by one; answers below are honest and specific.
-
-| Permission | Why it is needed |
+| Permission | Reviewer explanation |
 |---|---|
-| `downloads` | To see a download starting and cancel the browser's copy once Sandwich has accepted it — never before. |
-| `nativeMessaging` | The only channel to the desktop app. There is no socket or HTTP port; the OS-mediated stdio pipe is the security model. |
-| `cookies` | Read-only, to forward the cookies the origin would have received had the browser downloaded the file itself. Without them, downloads behind a login fail. Nothing is stored or sent anywhere except to that origin via the local desktop app. |
-| `storage` | The user's own toggle (automatic interception on/off, size threshold). |
-| `contextMenus` | The "Download with Sandwich" right-click entry. |
-| `notifications` | "Sent to Sandwich" / "Sandwich unavailable" — the outcome of a hand-off. |
-| `http://*/*`, `https://*/*` (host) | Downloads can start from any site; cookie forwarding must work for the site the download came from. The extension reads no page content — there is no content script at all. |
+| `downloads` | Observe a browser download and cancel that copy only after the local Sandwich app accepts it. |
+| `nativeMessaging` | Send the requested transfer to the locally installed desktop app through the operating system's native-messaging channel. |
+| `cookies` | Optional and off by default. If enabled, read cookies only for the download URL's own site so an authenticated file request can succeed. |
+| `storage` | Save consent choices, automatic-interception state, and the size threshold in the browser profile. |
+| `contextMenus` | Provide the user-invoked **Download with Sandwich** menu item on links and media. |
+| `notifications` | Report whether a user-invoked hand-off succeeded or whether the desktop app needs setup. |
+| `http://*/*`, `https://*/*` | Downloads and direct media can originate on any site. The content script inspects only video/audio elements to expose the local download action; it does not transmit page content. |
 
-**Single purpose statement (Chrome asks):** hand browser downloads to the Sandwich desktop
-download manager, with the request context needed for them to succeed.
+**Single-purpose statement:** Hand user-selected browser downloads and permitted direct media to
+the locally installed Sandwich Download Manager with the minimum request context needed for the
+transfer to succeed.
 
-**Data disclosure (all stores):** the extension collects nothing, transmits nothing off the
-machine, and has no analytics. Cookies for a download's origin are passed to the local
-desktop app over native messaging and used only for that transfer.
+**Data-use disclosure:** Website activity (download/page addresses and request context) is sent
+only to the local desktop app after consent. Authentication information (same-site cookies) is
+optional and off by default. No data is sold, used for advertising or profiling, or sent to
+project servers. See `PRIVACY.md`.
 
-## Firefox notes
+## Reviewer test instructions
 
-- AMO signs every listed build; the temporary-load path in the README stops being needed
-  once listed.
-- `browser_specific_settings.gecko.id` is already set (`sandwich@sandwich.dev`) and must
-  never change between versions.
-- AMO will ask for source access since the package is unminified plain JS — link the GitHub
-  repository; nothing further is required.
+1. Install and open Sandwich Download Manager 0.6.0.
+2. Install the submitted extension and approve URL sharing on the onboarding page. Leave cookie
+   sharing off for the basic test.
+3. Open a page containing an HTML `<video>` whose `src` is an ordinary HTTPS MP4/WebM file.
+4. Hover or play the media and select **Download with Sandwich**. Confirm the transfer appears
+   in the desktop queue.
+5. Right-click an ordinary HTTPS link and select **Download with Sandwich**. Confirm it appears
+   in the queue.
+6. Close the desktop app and start a browser download larger than the configured threshold.
+   Confirm the browser retains its own download and the user receives a setup message.
+7. Open a YouTube page. Confirm no media action is injected and no URL is handed to the app.
 
-## Assets stores ask for
+Provide reviewers with a public, non-authenticated direct-media test page and the matching
+desktop prerelease installer. Never provide production credentials.
 
-- Icon 128×128: `extension/icon128.png` (already in the package)
-- Screenshots 1280×800: take from a running Sandwich with the extension popup open —
-  one of the popup over a download page, one of the Sandwich queue receiving it.
-- Promo tile (Chrome, optional, 440×280): crop of the logo on the cream background.
+## Firefox submission notes
+
+- The stable add-on ID is `sandwich@sandwich.dev`; never change it between versions.
+- Upload the Firefox ZIP and choose listed distribution and all desktop platforms.
+- The submitted JS is plain, unminified, and unbundled. If AMO asks whether a build step is
+  required for the extension source, answer no and link this repository.
+- AMO signs approved builds. Replace the unsigned CI ZIP with the AMO-signed artifact for public
+  Firefox distribution.
+
+## Visual assets
+
+- Icons: `extension/icon48.png` and `extension/icon128.png`.
+- Screenshot: `extension/store-assets/onboarding-1280x800.png`.
+- Screenshot: `extension/store-assets/direct-media-1280x800.png`, showing the
+  **Download with Sandwich** action on a direct-media test page.
+- Optional Chrome promotional tile: 440x280, project logo on the cream brand background.
+
+Screenshots must use public sample media and contain no account, cookie, token, or personal data.
+
+## Submission checklist
+
+- [ ] Owner completes Chrome registration and payment
+- [ ] Owner completes Edge and Mozilla account verification
+- [ ] Chrome and Edge draft IDs are recorded in native-host defaults
+- [ ] Privacy-policy URL is public on `main`
+- [ ] Three ZIP hashes match the release checksums
+- [ ] Store copy, permissions, data disclosures, reviewer instructions, and screenshots uploaded
+- [ ] Firefox source/build answers completed
+- [ ] Desktop installers supplied to reviewers
+- [ ] Submit for review only after the exact desktop release SHA passes native CI
+- [ ] Record listing URLs and replace manual-install directions after approval

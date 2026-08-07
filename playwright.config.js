@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const portableBrowser = process.env.PLAYWRIGHT_BROWSER === "chromium";
+
 // The interface is plain files served over http, so the test server is the same one used for
 // looking at the UI by hand. Reusing it means these tests exercise exactly what a developer
 // sees, not a separate build path that could drift.
@@ -13,14 +15,12 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:4317",
     trace: "retain-on-failure",
   },
-  // Tests run in installed Edge rather than a downloaded Chromium. The app renders in
-  // WebView2, which is Edge's engine and on this machine the identical build, so this
-  // exercises the real rendering engine instead of an approximation of it. It also means
-  // no browser download, which matters on a restricted network and in CI.
+  // Windows uses installed Edge because it is the same engine as WebView2. Native macOS/Linux
+  // runners select bundled Chromium; packaged-app smoke tests cover the platform WebKit layer.
   projects: [
     {
-      name: "edge",
-      use: { ...devices["Desktop Edge"], channel: "msedge" },
+      name: portableBrowser ? "chromium" : "edge",
+      use: portableBrowser ? { ...devices["Desktop Chrome"] } : { ...devices["Desktop Edge"], channel: "msedge" },
     },
   ],
   webServer: {

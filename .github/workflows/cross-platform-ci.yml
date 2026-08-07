@@ -1,0 +1,146 @@
+name: macOS and Linux CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact: sandwich-linux
+            aria2: /usr/bin/aria2c
+          - os: macos-15
+            artifact: sandwich-macos-arm64
+            aria2: /opt/homebrew/bin/aria2c
+    runs-on: ${{ matrix.os }}
+    env:
+      CI: true
+      PLAYWRIGHT_BROWSER: chromium
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aria2 libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2 xvfb
+
+      - name: Install macOS download engine
+        if: runner.os == 'macOS'
+        run: brew install aria2
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Stage the native download engine
+        shell: bash
+        run: |
+          install -m 755 "${{ matrix.aria2 }}" apps/desktop/binaries/aria2c
+
+      - name: Format and build the native bridge
+        shell: bash
+        run: |
+          cargo fmt --all --check
+          cargo build --release -p sandwich-browser-host
+
+      - name: Rust and native-messaging tests
+        shell: bash
+        run: |
+          cargo test --workspace --locked
+          node tests/quality/smoke-browser-host.mjs "target/release/sandwich-browser-host"
+
+      - name: Frontend and browser tests
+        shell: bash
+        run: |
+          npm ci --no-fund --no-audit
+          npm test
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            npx playwright install --with-deps chromium
+          else
+            npx playwright install chromium
+          fi
+          npm run test:extension
+          npx playwright test
+
+      - name: Validate and package browser extensions
+        shell: bash
+        run: npm run package:extension
+
+      - name: Build native packages without release signatures
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            platform_config="apps/desktop/tauri.linux.conf.json"
+          else
+            platform_config="apps/desktop/tauri.macos.conf.json"
+          fi
+          npx --yes @tauri-apps/cli@2 build \
+            --config apps/desktop/tauri.conf.json \
+            --config "$platform_config" \
+            --config apps/desktop/tauri.keyless.conf.json
+
+      - name: Extract and launch-smoke Linux packages
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          find target/release/bundle -type f -print
+          mkdir -p /tmp/sandwich-deb
+          dpkg-deb --extract target/release/bundle/deb/*.deb /tmp/sandwich-deb
+          find /tmp/sandwich-deb -type f -name 'aria2c' -print -quit | grep .
+          find /tmp/sandwich-deb -type f -name 'sandwich-browser-host' -print -quit | grep .
+          appimage="$(find target/release/bundle/appimage -type f -name '*.AppImage' -print -quit)"
+          chmod +x "$appimage"
+          set +e
+          APPIMAGE_EXTRACT_AND_RUN=1 timeout 15s xvfb-run -a "$appimage" >/tmp/sandwich-appimage.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 124 ]; then
+            cat /tmp/sandwich-appimage.log
+            echo "AppImage exited before the 15-second smoke window (status $status)" >&2
+            exit 1
+          fi
+
+      - name: Inspect and launch-smoke the macOS app
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          app="$(find target/release/bundle/macos -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$app"
+          find "$app/Contents/Resources" -type f -name 'aria2c' -print -quit | grep .
+          find "$app/Contents/Resources" -type f -name 'sandwich-browser-host' -print -quit | grep .
+          executable="$(find "$app/Contents/MacOS" -type f -perm +111 -print -quit)"
+          "$executable" >/tmp/sandwich-macos.log 2>&1 &
+          pid=$!
+          sleep 12
+          if ! kill -0 "$pid" 2>/dev/null; then
+            cat /tmp/sandwich-macos.log
+            exit 1
+          fi
+          kill "$pid"
+          wait "$pid" || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            target/release/bundle/deb/*.deb
+            target/release/bundle/appimage/*.AppImage
+            target/release/bundle/macos/*.app
+            target/release/bundle/dmg/*.dmg
+            dist/sandwich-extension-*.zip
+          if-no-files-found: error
+          retention-days: 14

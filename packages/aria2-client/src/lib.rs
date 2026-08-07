@@ -184,14 +184,12 @@ mod job {
 
 /// Browser-compatible, with Sandwich identified at the end so operators can still see who we
 /// are in their logs.
-const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Sandwich/0.1";
+const USER_AGENT: &str = "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Sandwich/0.6";
 
 /// Where transfers land when no destination is supplied.
 fn default_download_dir() -> PathBuf {
-    std::env::var_os("USERPROFILE")
-        .map(PathBuf::from)
-        .map(|home| home.join("Downloads"))
-        .filter(|path| path.exists())
+    dirs::download_dir()
+        .filter(|path| path.is_dir())
         .unwrap_or_else(std::env::temp_dir)
 }
 

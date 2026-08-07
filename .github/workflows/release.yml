@@ -36,6 +36,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # Without the key Tauri cannot produce updater artifacts at all, and a release published
       # without them is worse than no release: every installed copy polls latest.json, and one
@@ -122,7 +124,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          $configs = @("--config", "apps/desktop/tauri.conf.json")
+          $configs = @(
+            "--config", "apps/desktop/tauri.conf.json",
+            "--config", "apps/desktop/tauri.windows.conf.json"
+          )
           $thumbprint = "${{ secrets.SIGNING_CERT_THUMBPRINT }}"
           if ($thumbprint) {
             # Tauri does not expand environment variables inside config files, so the thumbprint

@@ -6,10 +6,17 @@
 // which is why "it downloads in my browser but not in my download manager" is such a common
 // complaint. Getting that right is most of the value of this extension.
 
+if (!globalThis.SandwichExtensionPolicy && typeof importScripts === "function") {
+  importScripts("policy.js");
+}
+const policy = globalThis.SandwichExtensionPolicy;
+const extensionApi = globalThis.browser ?? globalThis.chrome;
 const HOST = "dev.sandwich.download_manager";
 
 const DEFAULTS = {
-  enabled: true,
+  enabled: false,
+  consentVersion: 0,
+  shareCookies: false,
   // Small files are usually part of the page rather than something worth managing, and
   // intercepting them is more annoying than helpful.
   minimumBytes: 1024 * 1024,
@@ -18,7 +25,7 @@ const DEFAULTS = {
 };
 
 async function settings() {
-  const stored = await chrome.storage.local.get(DEFAULTS);
+  const stored = await extensionApi.storage.local.get(DEFAULTS);
   return { ...DEFAULTS, ...stored };
 }
 
@@ -26,7 +33,7 @@ function notify(title, message) {
   // Notifications are best-effort; a missing icon or a denied permission must not break a
   // download that has already been handed over successfully.
   try {
-    chrome.notifications?.create({
+    extensionApi.notifications?.create({
       type: "basic",
       iconUrl: "icon128.png",
       title,
@@ -35,10 +42,18 @@ function notify(title, message) {
   } catch { /* ignore */ }
 }
 
+function friendlyNativeError(error) {
+  const detail = error?.message || String(error || "");
+  return /native messaging|host.*not found|disconnected/i.test(detail)
+    ? "Open the Sandwich desktop app and finish browser setup"
+    : detail || "Sandwich did not respond";
+}
+
 /** Cookies the origin would have received had the browser performed the download itself. */
-async function cookieHeaderFor(url) {
+async function cookieHeaderFor(url, allowed) {
+  if (!allowed) return "";
   try {
-    const jar = await chrome.cookies.getAll({ url });
+    const jar = await extensionApi.cookies.getAll({ url });
     if (!jar.length) return "";
     return jar.map((c) => `${c.name}=${c.value}`).join("; ");
   } catch {
@@ -47,13 +62,17 @@ async function cookieHeaderFor(url) {
 }
 
 async function handOver({ url, filename, referrer }) {
+  const validatedUrl = policy.directMediaUrl(url, referrer || "");
+  if (!validatedUrl) throw new Error("This action requires a permitted HTTP(S) URL");
+  const config = await settings();
+  if (config.consentVersion < 1) throw new Error("Open Sandwich settings and enable browser integration first");
   const [cookie, agent] = await Promise.all([
-    cookieHeaderFor(url),
+    cookieHeaderFor(validatedUrl, config.shareCookies),
     Promise.resolve(navigator.userAgent)
   ]);
 
-  const reply = await chrome.runtime.sendNativeMessage(HOST, {
-    url,
+  const reply = await extensionApi.runtime.sendNativeMessage(HOST, {
+    url: validatedUrl,
     filename: filename || undefined,
     referrer: referrer || undefined,
     user_agent: agent,
@@ -65,8 +84,9 @@ async function handOver({ url, filename, referrer }) {
 }
 
 function shouldIntercept(item, config) {
-  if (!config.enabled) return false;
+  if (!config.enabled || config.consentVersion < 1) return false;
   if (!/^https?:/i.test(item.finalUrl || item.url || "")) return false;
+  if (policy.isRestrictedMediaSite(item.finalUrl || item.url || "")) return false;
   // A known size below the threshold is not worth taking over. An unknown size usually means
   // a streamed attachment, which is exactly the kind of thing worth managing.
   if (item.fileSize > 0 && item.fileSize < config.minimumBytes) return false;
@@ -74,7 +94,7 @@ function shouldIntercept(item, config) {
   return true;
 }
 
-chrome.downloads.onCreated.addListener(async (item) => {
+extensionApi.downloads.onCreated.addListener(async (item) => {
   const config = await settings();
   if (!shouldIntercept(item, config)) return;
 
@@ -85,35 +105,69 @@ chrome.downloads.onCreated.addListener(async (item) => {
     await handOver({ url, filename, referrer: item.referrer });
     // Only cancel once Sandwich has accepted it. Cancelling first would lose the download
     // entirely if the hand-off failed.
-    await chrome.downloads.cancel(item.id);
-    await chrome.downloads.erase({ id: item.id });
+    await extensionApi.downloads.cancel(item.id);
+    await extensionApi.downloads.erase({ id: item.id });
     notify("Sent to Sandwich", filename || url);
   } catch (error) {
     // Leave the browser's own download running: a failed hand-off must never cost the user
     // their file.
     console.warn("Sandwich hand-off failed, leaving it to the browser:", error);
-    notify("Sandwich unavailable", `${error.message}. The browser will download it instead.`);
+    notify("Sandwich unavailable", `${friendlyNativeError(error)}. The browser will download it instead.`);
   }
 });
 
 // Explicit "download with Sandwich" on any link, which also covers everything the automatic
 // rules deliberately skip.
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: "sandwich-download",
-    title: "Download with Sandwich",
-    contexts: ["link", "video", "audio", "image"]
-  });
+extensionApi.runtime.onInstalled.addListener(() => {
+  const createMenu = () => {
+    extensionApi.contextMenus.create({
+      id: "sandwich-download",
+      title: "Download with Sandwich",
+      contexts: ["link", "video", "audio", "image"]
+    });
+  };
+  if (globalThis.browser) {
+    extensionApi.contextMenus.removeAll().then(createMenu);
+  } else {
+    extensionApi.contextMenus.removeAll(() => {
+      void extensionApi.runtime.lastError;
+      createMenu();
+    });
+  }
 });
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+extensionApi.runtime.onInstalled.addListener(({ reason }) => {
+  if (reason === "install") extensionApi.tabs.create({ url: extensionApi.runtime.getURL("onboarding.html") });
+});
+
+extensionApi.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== "sandwich-direct-media") return false;
+  const url = policy.directMediaUrl(message.url, message.referrer);
+  if (!url) {
+    sendResponse({ ok: false, error: "This media source is protected or is not a direct web file" });
+    return false;
+  }
+  handOver({ url, referrer: message.referrer })
+    .then((gid) => {
+      notify("Sent media to Sandwich", message.label || url);
+      sendResponse({ ok: true, gid });
+    })
+    .catch((error) => sendResponse({ ok: false, error: friendlyNativeError(error) }));
+  return true;
+});
+
+extensionApi.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== "sandwich-download") return;
   const url = info.linkUrl || info.srcUrl;
   if (!url) return;
+  if (policy.isRestrictedMediaSite(url) || policy.isRestrictedMediaSite(tab?.url || "")) {
+    notify("Not available in the store build", "YouTube downloads are prohibited by Chrome Web Store policy.");
+    return;
+  }
   try {
     await handOver({ url, referrer: tab?.url });
     notify("Sent to Sandwich", url);
   } catch (error) {
-    notify("Sandwich unavailable", error.message);
+    notify("Sandwich unavailable", friendlyNativeError(error));
   }
 });

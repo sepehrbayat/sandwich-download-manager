@@ -79,8 +79,9 @@ dependencies = [
 
 [[package]]
 name = "aria2-client"
-version = "0.1.1"
+version = "0.6.0"
 dependencies = [
+ "dirs",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3274,17 +3275,19 @@ dependencies = [
 
 [[package]]
 name = "sandwich-browser-host"
-version = "0.1.1"
+version = "0.6.0"
 dependencies = [
+ "dirs",
  "download-policy",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "url",
 ]
 
 [[package]]
 name = "sandwich-desktop"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "aria2-client",
  "chrono",

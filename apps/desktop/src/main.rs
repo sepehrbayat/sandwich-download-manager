@@ -868,9 +868,13 @@ fn main() {
             // the UI never claims "connected" while the queue is unavailable.
             // Prefer the engine shipped beside the app; fall back to PATH for a dev run from
             // the workspace, where no bundle exists yet.
+            let aria2_name = format!("aria2c{}", std::env::consts::EXE_SUFFIX);
             let bundled = app
                 .path()
-                .resolve("binaries/aria2c.exe", tauri::path::BaseDirectory::Resource)
+                .resolve(
+                    PathBuf::from("binaries").join(aria2_name),
+                    tauri::path::BaseDirectory::Resource,
+                )
                 .ok()
                 .filter(|path| path.exists());
             let started = match bundled {

@@ -20,7 +20,7 @@
     "https://*/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "scripts": ["policy.js", "background.js"]
   },
   "content_scripts": [
     {
@@ -41,5 +41,15 @@
   "options_ui": {
     "page": "onboarding.html",
     "open_in_tab": true
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sandwich@sandwich.dev",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": ["websiteActivity", "websiteContent"],
+        "optional": ["authenticationInfo"]
+      }
+    }
   }
 }

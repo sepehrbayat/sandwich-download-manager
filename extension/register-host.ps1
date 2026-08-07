@@ -14,6 +14,7 @@
 param(
   # Chrome/Edge assign this when the extension is loaded; copy it from chrome://extensions.
   [string]$ChromeExtensionId = "",
+  [string]$EdgeExtensionId = "",
   # Firefox uses the id declared in the manifest.
   [string]$FirefoxExtensionId = "sandwich@sandwich.dev",
   [string]$HostBinary = "",
@@ -38,9 +39,9 @@ function Resolve-HostBinary {
 }
 
 $registryTargets = @(
-  @{ Name = "Chrome";  Key = "HKCU:\Software\Google\Chrome\NativeMessagingHosts\$hostName" },
-  @{ Name = "Edge";    Key = "HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\$hostName" },
-  @{ Name = "Firefox"; Key = "HKCU:\Software\Mozilla\NativeMessagingHosts\$hostName" }
+  @{ Name = "Chrome";  Key = "HKCU:\Software\Google\Chrome\NativeMessagingHosts\$hostName"; Manifest = "chrome" },
+  @{ Name = "Edge";    Key = "HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\$hostName"; Manifest = "edge" },
+  @{ Name = "Firefox"; Key = "HKCU:\Software\Mozilla\NativeMessagingHosts\$hostName"; Manifest = "firefox" }
 )
 
 if ($Unregister) {
@@ -60,6 +61,9 @@ New-Item -ItemType Directory -Force -Path $manifestDir | Out-Null
 # manifest rather than one that is subtly wrong for both.
 $chromeOrigins = @()
 if ($ChromeExtensionId) { $chromeOrigins += "chrome-extension://$ChromeExtensionId/" }
+$edgeOrigins = @()
+if ($EdgeExtensionId) { $edgeOrigins += "chrome-extension://$EdgeExtensionId/" }
+elseif ($ChromeExtensionId) { $edgeOrigins += "chrome-extension://$ChromeExtensionId/" }
 
 $chromeManifest = [ordered]@{
   name = $hostName
@@ -67,6 +71,13 @@ $chromeManifest = [ordered]@{
   path = $binary
   type = "stdio"
   allowed_origins = $chromeOrigins
+}
+$edgeManifest = [ordered]@{
+  name = $hostName
+  description = "Sandwich Download Manager browser bridge"
+  path = $binary
+  type = "stdio"
+  allowed_origins = $edgeOrigins
 }
 $firefoxManifest = [ordered]@{
   name = $hostName
@@ -77,19 +88,26 @@ $firefoxManifest = [ordered]@{
 }
 
 $chromePath = Join-Path $manifestDir "native-host-chromium.json"
+$edgePath = Join-Path $manifestDir "native-host-edge.json"
 $firefoxPath = Join-Path $manifestDir "native-host-firefox.json"
 $chromeManifest | ConvertTo-Json -Depth 5 | Set-Content -Path $chromePath -Encoding UTF8
+$edgeManifest | ConvertTo-Json -Depth 5 | Set-Content -Path $edgePath -Encoding UTF8
 $firefoxManifest | ConvertTo-Json -Depth 5 | Set-Content -Path $firefoxPath -Encoding UTF8
 
 foreach ($target in $registryTargets) {
-  $manifest = if ($target.Name -eq "Firefox") { $firefoxPath } else { $chromePath }
+  $manifest = switch ($target.Manifest) {
+    "firefox" { $firefoxPath }
+    "edge" { $edgePath }
+    default { $chromePath }
+  }
   New-Item -Path $target.Key -Force | Out-Null
   Set-ItemProperty -Path $target.Key -Name "(default)" -Value $manifest
   "registered $($target.Name) -> $manifest"
 }
 
 if (-not $ChromeExtensionId) {
-  Write-Warning "No Chrome/Edge extension id was supplied, so those browsers will refuse the host."
-  Write-Warning "Load the extension at chrome://extensions, copy its ID, then re-run:"
-  Write-Warning "  .\register-host.ps1 -ChromeExtensionId <id>"
+  Write-Warning "Chrome is staged but disabled. Supply -ChromeExtensionId with its Chrome store/development ID."
+}
+if (-not $EdgeExtensionId) {
+  Write-Warning "Edge is staged with the Chrome/development ID fallback. Supply -EdgeExtensionId before release."
 }

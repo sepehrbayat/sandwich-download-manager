@@ -61,10 +61,28 @@ struct Handoff {
 }
 
 fn data_dir() -> PathBuf {
-    std::env::var_os("APPDATA")
-        .map(PathBuf::from)
+    if let Some(path) = std::env::var_os("SANDWICH_DATA_DIR") {
+        return PathBuf::from(path);
+    }
+    dirs::data_dir()
         .unwrap_or_else(std::env::temp_dir)
         .join("dev.sandwich.download-manager")
+}
+
+fn is_restricted_store_url(value: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(value) else {
+        return false;
+    };
+    let host = parsed
+        .host_str()
+        .unwrap_or_default()
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    host == "youtu.be" || host == "youtube.com" || host.ends_with(".youtube.com")
+}
+
+fn safe_header_value(value: &str) -> Option<&str> {
+    (!value.is_empty() && !value.contains('\r') && !value.contains('\n')).then_some(value)
 }
 
 fn read_handoff() -> Option<Handoff> {
@@ -110,12 +128,20 @@ fn queue(handoff: &Handoff, request: &Request) -> Result<String, String> {
     // Sandwich owns URL and filename policy no matter who submits the download. The browser
     // is not a trusted source of filenames: a hostile site chooses Content-Disposition.
     download_policy::validate_url(&request.url).map_err(|error| error.to_string())?;
+    if is_restricted_store_url(&request.url)
+        || request
+            .referrer
+            .as_deref()
+            .is_some_and(is_restricted_store_url)
+    {
+        return Err("YouTube is not available in the store build".to_owned());
+    }
 
     let mut headers: Vec<String> = Vec::new();
-    if let Some(referrer) = request.referrer.as_ref().filter(|value| !value.is_empty()) {
+    if let Some(referrer) = request.referrer.as_deref().and_then(safe_header_value) {
         headers.push(format!("Referer: {referrer}"));
     }
-    if let Some(cookie) = request.cookie.as_ref().filter(|value| !value.is_empty()) {
+    if let Some(cookie) = request.cookie.as_deref().and_then(safe_header_value) {
         headers.push(format!("Cookie: {cookie}"));
     }
 
@@ -126,7 +152,7 @@ fn queue(handoff: &Handoff, request: &Request) -> Result<String, String> {
     if let Some(agent) = request
         .user_agent
         .as_ref()
-        .filter(|value| !value.is_empty())
+        .and_then(|value| safe_header_value(value))
     {
         options.insert("user-agent".into(), serde_json::json!(agent));
     }
@@ -170,6 +196,27 @@ fn queue(handoff: &Handoff, request: &Request) -> Result<String, String> {
         .and_then(|value| value.as_str())
         .map(str::to_owned)
         .ok_or_else(|| "the engine returned no download id".to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn store_host_blocks_youtube_without_blocking_similar_names() {
+        assert!(is_restricted_store_url("https://www.youtube.com/watch?v=1"));
+        assert!(is_restricted_store_url(
+            "https://www.youtube.com./watch?v=1"
+        ));
+        assert!(is_restricted_store_url("https://youtu.be/abc"));
+        assert!(!is_restricted_store_url("https://notyoutube.com/file.mp4"));
+    }
+
+    #[test]
+    fn native_headers_cannot_add_another_header() {
+        assert_eq!(safe_header_value("session=one"), Some("session=one"));
+        assert_eq!(safe_header_value("session=one\r\nX-Evil: yes"), None);
+    }
 }
 
 fn main() {

@@ -11,6 +11,7 @@
       input[type=number] { width: 70px; padding: 3px 6px; }
       .status { margin-top: 12px; padding: 8px 10px; border-radius: 4px; background: rgb(0 0 0 / .06); font-size: 12px; }
       .ok { color: #3f8f4f; } .bad { color: #c4442e; }
+      button { border: 0; padding: 0; background: none; color: #8b4c2d; font: inherit; text-decoration: underline; cursor: pointer; }
     </style>
   </head>
   <body>
@@ -18,6 +19,7 @@
     <p class="sub">Downloads are handed to the desktop app.</p>
     <label><input type="checkbox" id="enabled" /> Take over browser downloads</label>
     <label>Only files larger than <input type="number" id="minimum" min="0" step="1" /> MB</label>
+    <p id="consent-note"><button id="open-settings" type="button">Review data choices to enable integration</button></p>
     <div class="status" id="status">Checking…</div>
     <script src="popup.js"></script>
   </body>

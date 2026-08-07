@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Connect Sandwich to your browser</title>
+    <style>
+      :root { color-scheme: light dark; font: 16px/1.5 system-ui, sans-serif; }
+      body { margin: 0; background: #fbf7f1; color: #2a1f17; }
+      main { width: min(680px, calc(100% - 40px)); margin: 8vh auto; }
+      h1 { line-height: 1.1; }
+      .panel { border: 1px solid #d8c6b4; border-radius: 12px; padding: 24px; background: #fffaf4; }
+      label { display: flex; gap: 12px; margin: 18px 0; align-items: flex-start; }
+      input { margin-top: 5px; }
+      button { border: 0; border-radius: 8px; padding: 11px 16px; background: #7a3f25; color: white; font: inherit; font-weight: 650; cursor: pointer; }
+      button:disabled { opacity: .5; cursor: not-allowed; }
+      .fine { font-size: 13px; opacity: .75; }
+      #saved { margin-left: 10px; color: #28733b; }
+      @media (prefers-color-scheme: dark) {
+        body { background: #1d1712; color: #f6efe4; }
+        .panel { background: #282019; border-color: #584233; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Connect Sandwich to your browser</h1>
+      <p>Sandwich works locally. It has no account, cloud service, analytics, or advertising.</p>
+      <div class="panel">
+        <label>
+          <input id="consent" type="checkbox" disabled />
+          <span><strong>Allow download addresses to be sent to the Sandwich app on this computer.</strong><br />
+          This is required for browser downloads and the visible action on direct video/audio files.</span>
+        </label>
+        <label>
+          <input id="cookies" type="checkbox" disabled />
+          <span><strong>Also include cookies for the download's own site.</strong><br />
+          Optional. This helps files behind a login. Cookies go only through the operating
+          system's native-messaging channel to the local Sandwich app and are not stored.</span>
+        </label>
+        <p class="fine">The store build does not extract YouTube, bypass paywalls, or circumvent DRM.
+        Download only content you own or are allowed to save.</p>
+        <button id="save" disabled>Save data choices</button><span id="saved"></span>
+      </div>
+    </main>
+    <script src="onboarding.js"></script>
+  </body>
+</html>

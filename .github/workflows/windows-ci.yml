@@ -12,6 +12,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -56,6 +58,11 @@ jobs:
       - name: UI tests
         run: npx playwright test
 
+      - name: Browser extension smoke, lint, and packages
+        run: |
+          npm run test:extension
+          npm run package:extension
+
       - name: Upload UI test traces
         if: failure()
         uses: actions/upload-artifact@v4
@@ -76,7 +83,10 @@ jobs:
         # PowerShell's legacy quoting for batch files strips the inner quotes out of a JSON
         # argument before Tauri ever sees it.
         run: |
-          $configs = @("--config", "apps/desktop/tauri.conf.json")
+          $configs = @(
+            "--config", "apps/desktop/tauri.conf.json",
+            "--config", "apps/desktop/tauri.windows.conf.json"
+          )
           $updaterKey = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
           if ($updaterKey) {
             $env:TAURI_SIGNING_PRIVATE_KEY = $updaterKey
@@ -101,4 +111,5 @@ jobs:
           path: |
             target/release/bundle/msi/*.msi
             target/release/bundle/nsis/*-setup.exe
+            dist/sandwich-extension-*.zip
           if-no-files-found: error
