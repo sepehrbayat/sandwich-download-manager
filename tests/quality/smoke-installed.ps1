@@ -117,23 +117,49 @@ Section "Startup"
 Remove-Item (Join-Path $env:USERPROFILE "Downloads\$prefix*") -Force -ErrorAction SilentlyContinue
 Get-Process -Name sandwich-desktop -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.Id -Force }
 Start-Sleep -Seconds 2
-Start-Process $AppPath | Out-Null
-Start-Sleep -Seconds 10
+
+$enginePath = Join-Path (Split-Path $AppPath) "binaries\aria2c.exe"
+Check "the bundled engine exists" (Test-Path $enginePath) $enginePath
+if (Test-Path $enginePath) {
+  $engineVersion = @(& $enginePath --version 2>&1)
+  Check "the bundled engine is executable" ($LASTEXITCODE -eq 0) $engineVersion[0]
+}
+
+$appStdout = Join-Path $env:TEMP "sandwich-smoke-app-out.log"
+$appStderr = Join-Path $env:TEMP "sandwich-smoke-app-error.log"
+Remove-Item $appStdout, $appStderr -Force -ErrorAction SilentlyContinue
+Start-Process $AppPath -RedirectStandardOutput $appStdout -RedirectStandardError $appStderr | Out-Null
+
+# Readiness is the contract, not an arbitrary sleep. A clean Windows machine can hold a newly
+# installed sidecar for several seconds while antivirus inspects it, so allow the app's bounded
+# startup window and stop as soon as both the engine and browser handoff are real.
+$deadline = (Get-Date).AddSeconds(25)
+do {
+  Start-Sleep -Milliseconds 500
+  $engines = @(Get-CimInstance Win32_Process -Filter "Name='aria2c.exe'" | Where-Object { $_.CommandLine -match 'rpc-secret' })
+  $handoff = Handoff
+} until (($engines.Count -eq 1 -and $null -ne $handoff) -or (Get-Date) -ge $deadline)
 
 $app = @(Get-Process -Name sandwich-desktop -ErrorAction SilentlyContinue)
 Check "the application starts" ($app.Count -eq 1) "$($app.Count) process(es)"
 if ($app.Count -eq 0) { exit 1 }
 Check "it opens a window" ([bool]$app[0].MainWindowTitle) $app[0].MainWindowTitle
 
-$engines = @(Get-CimInstance Win32_Process -Filter "Name='aria2c.exe'" | Where-Object { $_.CommandLine -match 'rpc-secret' })
 Check "exactly one engine is running" ($engines.Count -eq 1) "$($engines.Count) engine(s)"
 
 $engineFromBundle = $engines.Count -gt 0 -and $engines[0].CommandLine -match [regex]::Escape("Sandwich Download Manager")
 Check "the engine is the bundled copy" $engineFromBundle
 
-$handoff = Handoff
 Check "the browser handoff is published" ($null -ne $handoff) $(if ($handoff) { $handoff.endpoint })
-if (-not $handoff) { exit 1 }
+if (-not $handoff) {
+  Get-Process -Name sandwich-desktop -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.Id -Force }
+  Start-Sleep -Seconds 1
+  if (Test-Path $appStderr) {
+    Write-Host "`nApplication stderr:" -ForegroundColor Yellow
+    Get-Content $appStderr
+  }
+  exit 1
+}
 
 Section "A second launch must not start a second engine"
 Start-Process $AppPath | Out-Null
@@ -257,6 +283,7 @@ Get-Process -Name sandwich-desktop -ErrorAction SilentlyContinue | ForEach-Objec
 Start-Sleep -Seconds 3
 $orphans = @(Get-Process -Name aria2c -ErrorAction SilentlyContinue)
 Check "the engine exits with the application" ($orphans.Count -eq 0) "$($orphans.Count) orphan(s)"
+Remove-Item $appStdout, $appStderr -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
 if ($script:failures -eq 0) {
