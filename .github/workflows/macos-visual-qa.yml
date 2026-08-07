@@ -1,0 +1,82 @@
+name: macOS visual QA
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Release workflow run containing the macOS app artifact
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  capture:
+    runs-on: macos-15
+    steps:
+      - name: Download the exact macOS release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sandwich-release-macos-arm64
+          path: artifact
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.release_run_id }}
+
+      - name: Launch the packaged app and capture its real window
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app evidence
+          archive="$(find artifact -type f -name '*.app.tar.gz' -print -quit)"
+          test -n "$archive"
+          tar -xzf "$archive" -C app
+          bundle="$(find app -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$bundle"
+          codesign --verify --deep --strict "$bundle"
+
+          open -n "$bundle"
+          sleep 12
+
+          swift - > evidence/windows.tsv <<'SWIFT'
+          import CoreGraphics
+          import Foundation
+
+          let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+          let rows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
+          for row in rows {
+            let layer = row[kCGWindowLayer as String] as? Int ?? -1
+            guard layer == 0 else { continue }
+            let owner = row[kCGWindowOwnerName as String] as? String ?? ""
+            let title = row[kCGWindowName as String] as? String ?? ""
+            let number = row[kCGWindowNumber as String] as? Int ?? 0
+            let bounds = row[kCGWindowBounds as String] as? [String: Any] ?? [:]
+            let width = bounds["Width"] as? Int ?? 0
+            let height = bounds["Height"] as? Int ?? 0
+            print("\(number)\t\(owner)\t\(title)\t\(width)x\(height)")
+          }
+          SWIFT
+
+          cat evidence/windows.tsv
+          window_id="$(awk -F '\t' 'tolower($2 " " $3) ~ /sandwich/ && $4 !~ /^0x/ { print $1; exit }' evidence/windows.tsv)"
+          if [ -z "$window_id" ]; then
+            /usr/sbin/screencapture -x evidence/macos-full-screen.png
+            echo "No on-screen Sandwich window was found" >&2
+            exit 1
+          fi
+
+          /usr/sbin/screencapture -x -l "$window_id" evidence/macos-app-window.png
+          sips -g pixelWidth -g pixelHeight evidence/macos-app-window.png
+
+          app_pid="$(pgrep -f '/Contents/MacOS/' | head -n 1 || true)"
+          if [ -n "$app_pid" ]; then kill -TERM "$app_pid" || true; fi
+
+      - name: Upload visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-visual-qa-${{ inputs.release_run_id }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 14
