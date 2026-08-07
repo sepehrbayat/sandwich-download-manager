@@ -4,17 +4,19 @@ name: Release
 # exactly one place: the repository secrets. That is also what makes a release reproducible —
 # the artifact users install is built from a tagged commit by a machine with no local state.
 #
-# To publish: bump the version in apps/desktop/tauri.conf.json, apps/desktop/Cargo.toml and
-# extension/manifest.json, merge, then push a matching tag:
+# To publish through Actions: bump the version in apps/desktop/tauri.conf.json,
+# apps/desktop/Cargo.toml and extension/manifest.json, merge, push a matching tag, then explicitly
+# dispatch this workflow from that tag after the signing secret has been provisioned:
 #
-#   git tag v0.5.0 && git push origin v0.5.0
+#   gh workflow run release.yml --ref v0.5.0 -f dry_run=false
+#
+# Tag pushes do not start this workflow automatically. This keeps a locally signed manual release
+# from creating a guaranteed red run when the private updater key is intentionally not in GitHub.
 #
 # Everything below is a guard against the two ways a release goes quietly wrong: shipping an
 # installer that installed copies will refuse, and shipping one they never hear about.
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       dry_run:
