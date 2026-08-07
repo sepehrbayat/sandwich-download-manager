@@ -81,7 +81,10 @@ jobs:
         # PowerShell's legacy quoting for batch files strips the inner quotes out of a JSON
         # argument before Tauri ever sees it.
         run: |
-          $configs = @("--config", "apps/desktop/tauri.conf.json")
+          $configs = @(
+            "--config", "apps/desktop/tauri.conf.json",
+            "--config", "apps/desktop/tauri.windows.conf.json"
+          )
           $updaterKey = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
           if ($updaterKey) {
             $env:TAURI_SIGNING_PRIVATE_KEY = $updaterKey

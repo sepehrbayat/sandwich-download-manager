@@ -122,7 +122,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          $configs = @("--config", "apps/desktop/tauri.conf.json")
+          $configs = @(
+            "--config", "apps/desktop/tauri.conf.json",
+            "--config", "apps/desktop/tauri.windows.conf.json"
+          )
           $thumbprint = "${{ secrets.SIGNING_CERT_THUMBPRINT }}"
           if ($thumbprint) {
             # Tauri does not expand environment variables inside config files, so the thumbprint

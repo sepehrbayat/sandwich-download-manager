@@ -80,7 +80,16 @@ jobs:
 
       - name: Build native packages without release signatures
         shell: bash
-        run: npx --yes @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json --config apps/desktop/tauri.keyless.conf.json
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            platform_config="apps/desktop/tauri.linux.conf.json"
+          else
+            platform_config="apps/desktop/tauri.macos.conf.json"
+          fi
+          npx --yes @tauri-apps/cli@2 build \
+            --config apps/desktop/tauri.conf.json \
+            --config "$platform_config" \
+            --config apps/desktop/tauri.keyless.conf.json
 
       - name: Extract and launch-smoke Linux packages
         if: runner.os == 'Linux'
