@@ -329,8 +329,13 @@ impl Aria2 {
             child: std::sync::Mutex::new(Some(child)),
         };
 
-        // aria2 needs a moment to bind; poll rather than sleeping a fixed guess.
-        for _ in 0..40 {
+        // aria2 normally binds in well under a second, but the first launch of a newly
+        // installed executable can spend several seconds in antivirus inspection on Windows.
+        // Four seconds proved too short on clean hosted runners: the UI opened, then Sandwich
+        // killed an otherwise healthy engine just before it became ready. Keep polling with a
+        // finite ceiling so slow machines get a working download manager without hiding a
+        // genuinely broken sidecar forever.
+        for _ in 0..150 {
             if engine
                 .call("aria2.getVersion", serde_json::json!([]))
                 .await
