@@ -1,20 +1,8 @@
 name: Release
 
-# Releases are built here rather than on anyone's laptop, so the minisign private key lives in
-# exactly one place: the repository secrets. That is also what makes a release reproducible —
-# the artifact users install is built from a tagged commit by a machine with no local state.
-#
-# To publish through Actions: bump the version in apps/desktop/tauri.conf.json,
-# apps/desktop/Cargo.toml and extension/manifest.json, merge, push a matching tag, then explicitly
-# dispatch this workflow from that tag after the signing secret has been provisioned:
-#
-#   gh workflow run release.yml --ref v0.5.0 -f dry_run=false
-#
-# Tag pushes do not start this workflow automatically. This keeps a locally signed manual release
-# from creating a guaranteed red run when the private updater key is intentionally not in GitHub.
-#
-# Everything below is a guard against the two ways a release goes quietly wrong: shipping an
-# installer that installed copies will refuse, and shipping one they never hear about.
+# Release builds are created from a tagged commit on clean GitHub runners. Updater signatures,
+# Apple credentials, and optional Windows code-signing credentials live only in repository
+# secrets. A dry run exercises the same signed updater pipeline without publishing anything.
 
 on:
   workflow_dispatch:
@@ -29,64 +17,124 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  preflight:
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      # Without the key Tauri cannot produce updater artifacts at all, and a release published
-      # without them is worse than no release: every installed copy polls latest.json, and one
-      # that points at an unsigned artifact is rejected on arrival. v0.2.0 and v0.1.1 shipped
-      # with no .sig files, so this is a mistake the project has already made once.
-      - name: Require the updater signing key
+      - name: Require the permanent updater signing key
         env:
           UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           if (-not $env:UPDATER_KEY) {
-            Write-Error @"
-          TAURI_SIGNING_PRIVATE_KEY is not set on this repository.
-
-          Every installed copy of Sandwich verifies an update's signature against the public key
-          baked into the app, so an unsigned release cannot be installed by anyone — it can only
-          make the update check fail. Add the secret (the CONTENTS of ~/.tauri/sandwich-updater.key
-          on the release machine) under Settings -> Secrets and variables -> Actions, then re-run.
-
-          Do not generate a replacement key: installed copies verify against the public key they
-          shipped with, so rotating it locks every existing user out of all future updates. See
-          SIGNING.md.
-          "@
+            Write-Error "TAURI_SIGNING_PRIVATE_KEY is not configured. Do not create or rotate it; provision the existing permanent key described in SIGNING.md."
             exit 1
           }
-          Write-Host "updater signing key is present"
 
-      # A tag that disagrees with the version in the config produces a latest.json advertising a
-      # version the installer does not carry. The updater then either offers an update that
-      # reinstalls the same build, or never settles — and the only symptom is a user reporting
-      # that the update "keeps coming back".
-      - name: Check the tag matches the version in the config
+      - name: Check tag and package version parity
         id: version
         run: |
           $configured = (Get-Content apps/desktop/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $versions = [ordered]@{
+            desktop_crate = (Select-String apps/desktop/Cargo.toml '^version = "(.+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+            package = (Get-Content package.json -Raw | ConvertFrom-Json).version
+            chromium = (Get-Content extension/manifest.json -Raw | ConvertFrom-Json).version
+            firefox = (Get-Content extension/manifest.firefox.json -Raw | ConvertFrom-Json).version
+          }
+          foreach ($entry in $versions.GetEnumerator()) {
+            if ($entry.Value -ne $configured) {
+              Write-Error "$($entry.Key) version $($entry.Value) does not match desktop version $configured"
+              exit 1
+            }
+          }
           $tag = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "v$configured" }
-          $tagged = $tag -replace '^v', ''
-          if ($tagged -ne $configured) {
-            Write-Error "tag $tag does not match apps/desktop/tauri.conf.json version $configured"
+          if (($tag -replace '^v', '') -ne $configured) {
+            Write-Error "tag $tag does not match configured version $configured"
             exit 1
           }
-          $crate = (Select-String -Path apps/desktop/Cargo.toml -Pattern '^version = "(.+)"' |
-                     Select-Object -First 1).Matches[0].Groups[1].Value
-          if ($crate -ne $configured) {
-            Write-Error "apps/desktop/Cargo.toml is $crate but tauri.conf.json is $configured"
-            exit 1
-          }
-          Add-Content -Path $env:GITHUB_OUTPUT -Encoding utf8 -Value "version=$configured"
-          Add-Content -Path $env:GITHUB_OUTPUT -Encoding utf8 -Value "tag=v$configured"
-          Write-Host "releasing $configured"
+          Add-Content $env:GITHUB_OUTPUT "version=$configured"
+          Add-Content $env:GITHUB_OUTPUT "tag=v$configured"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install integration-test dependencies
+        run: |
+          choco install aria2 --no-progress -y
+          npm ci --no-fund --no-audit
+
+      - name: Build the browser bridge
+        run: cargo build --release -p sandwich-browser-host
+
+      - name: Full verification
+        run: |
+          cargo fmt --all --check
+          cargo test --workspace --locked
+          npm test
+          npm run test:extension
+          npm run package:extension
+          npx playwright test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sandwich-release-extensions
+          path: dist/sandwich-extension-*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  build:
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            artifact: sandwich-release-windows
+          - os: ubuntu-22.04
+            platform: linux
+            artifact: sandwich-release-linux
+          - os: macos-15
+            platform: macos
+            artifact: sandwich-release-macos-arm64
+    runs-on: ${{ matrix.os }}
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aria2 libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2 xvfb
+
+      - name: Install macOS download engine
+        if: runner.os == 'macOS'
+        run: brew install aria2
+
+      - name: Install Windows download engine
+        if: runner.os == 'Windows'
+        run: choco install aria2 --no-progress -y
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -94,35 +142,52 @@ jobs:
         with:
           node-version: 20
 
-      # The engine lifecycle tests skip themselves when aria2c is absent — reporting as passed
-      # while covering nothing. A release must not be the build where that goes unnoticed.
-      - name: Install aria2
-        run: choco install aria2 --no-progress -y
+      - name: Stage Unix download engine
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then engine=/usr/bin/aria2c; else engine=/opt/homebrew/bin/aria2c; fi
+          install -m 755 "$engine" apps/desktop/binaries/aria2c
 
-      # Staged into the bundle resources by the desktop crate's build script, and Tauri checks
-      # the resource exists on every compile, including the test build.
       - name: Build browser bridge
         run: cargo build --release -p sandwich-browser-host
 
-      - name: Tests
-        run: cargo test --workspace
-
-      - name: Frontend tests
+      - name: Prepare Apple signing identity
+        if: runner.os == 'macOS'
+        id: apple
         shell: bash
-        run: node --test tests/frontend/*.test.js
-
-      - name: Install UI test runner
-        run: npm ci --no-fund --no-audit
-
-      - name: UI tests
-        run: npx playwright test
-
-      # Same --config-as-a-file discipline as the CI workflow: npx is a .cmd shim, and inline
-      # JSON loses its quotes on the way through PowerShell's legacy quoting for batch files.
-      - name: Build signed installers
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            if [ "${{ inputs.dry_run }}" != "true" ]; then
+              echo "A final macOS release requires APPLE_CERTIFICATE and notarization credentials." >&2
+              exit 1
+            fi
+            overlay="$RUNNER_TEMP/macos-adhoc.conf.json"
+            printf '%s\n' '{"bundle":{"macOS":{"signingIdentity":"-"}}}' > "$overlay"
+            echo "overlay=$overlay" >> "$GITHUB_OUTPUT"
+            echo "Using an ad-hoc identity for this inspection-only dry run."
+            exit 0
+          fi
+          for required in APPLE_CERTIFICATE_PASSWORD KEYCHAIN_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!required}" ]; then echo "$required is required when APPLE_CERTIFICATE is configured" >&2; exit 1; fi
+          done
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import "$RUNNER_TEMP/certificate.p12" -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          identity="$(security find-identity -v -p codesigning build.keychain | awk -F'"' '/Developer ID Application/ { print $2; exit }')"
+          test -n "$identity"
+          echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+
+      - name: Build Windows release packages
+        if: runner.os == 'Windows'
         run: |
           $configs = @(
             "--config", "apps/desktop/tauri.conf.json",
@@ -130,80 +195,153 @@ jobs:
           )
           $thumbprint = "${{ secrets.SIGNING_CERT_THUMBPRINT }}"
           if ($thumbprint) {
-            # Tauri does not expand environment variables inside config files, so the thumbprint
-            # is written into a throwaway overlay at build time.
             $identity = Join-Path $env:RUNNER_TEMP "authenticode.conf.json"
             @{ bundle = @{ windows = @{ certificateThumbprint = $thumbprint } } } |
-              ConvertTo-Json -Depth 4 | Set-Content -Path $identity -Encoding ascii
-            $configs += @("--config", "apps/desktop/tauri.signing.conf.json")
-            $configs += @("--config", $identity)
+              ConvertTo-Json -Depth 4 | Set-Content $identity -Encoding ascii
+            $configs += @("--config", "apps/desktop/tauri.signing.conf.json", "--config", $identity)
           } else {
-            Write-Host "::notice::No Authenticode certificate configured; installers are unsigned and SmartScreen will warn on first run. Updater artifacts are signed regardless. See SIGNING.md."
+            Write-Host "::notice::Authenticode is not configured; updater signatures and published checksums still protect update integrity."
           }
           npx --yes @tauri-apps/cli@2 build @configs
 
-      # Belt and braces: the build is supposed to fail without a key, but a missing .sig here
-      # means a release that silently breaks every installed copy's update check.
-      - name: Verify the updater artifacts exist
+      - name: Build Linux release packages
+        if: runner.os == 'Linux'
+        shell: bash
+        run: npx --yes @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json --config apps/desktop/tauri.linux.conf.json
+
+      - name: Build macOS release packages
+        if: runner.os == 'macOS'
+        shell: bash
         run: |
-          $setup = "target/release/bundle/nsis/Sandwich Download Manager_${{ steps.version.outputs.version }}_x64-setup.exe"
-          foreach ($required in @($setup, "$setup.sig")) {
-            if (-not (Test-Path -LiteralPath $required)) {
-              Write-Error "missing $required - the updater would have nothing to verify"
-              exit 1
-            }
+          configs=(--config apps/desktop/tauri.conf.json --config apps/desktop/tauri.macos.conf.json)
+          if [ -n "${{ steps.apple.outputs.overlay }}" ]; then configs+=(--config "${{ steps.apple.outputs.overlay }}"); fi
+          npx --yes @tauri-apps/cli@2 build "${configs[@]}"
+
+      - name: Verify and smoke Windows installed package
+        if: runner.os == 'Windows'
+        run: |
+          $setup = @(Get-ChildItem "target/release/bundle/nsis/*_${{ needs.preflight.outputs.version }}_x64-setup.exe")
+          if ($setup.Count -ne 1 -or -not (Test-Path "$($setup[0].FullName).sig")) {
+            Write-Error "Windows updater executable/signature pair is incomplete"
+            exit 1
           }
-          Write-Host "installer and signature both present"
+          $installer = Start-Process -FilePath $setup[0].FullName -ArgumentList "/S" -Wait -PassThru
+          if ($installer.ExitCode -ne 0) { throw "installer exited $($installer.ExitCode)" }
+          powershell -ExecutionPolicy Bypass -File tests/quality/smoke-installed.ps1
 
-      - name: Author latest.json
+      - name: Verify and smoke Linux packages
+        if: runner.os == 'Linux'
+        shell: bash
         run: |
-          # github.repository rather than the script's default, so a release built from a fork
-          # advertises URLs on the repo it was actually published to.
-          $notes = git log -1 --pretty=%s
+          appimage="$(find target/release/bundle/appimage -type f -name '*.AppImage' -print -quit)"
+          test -n "$appimage" && test -s "$appimage.sig"
+          mkdir -p /tmp/sandwich-deb
+          dpkg-deb --extract target/release/bundle/deb/*.deb /tmp/sandwich-deb
+          find /tmp/sandwich-deb -type f -name aria2c -print -quit | grep .
+          find /tmp/sandwich-deb -type f -name sandwich-browser-host -print -quit | grep .
+          chmod +x "$appimage"
+          set +e
+          APPIMAGE_EXTRACT_AND_RUN=1 timeout 15s xvfb-run -a "$appimage" >/tmp/sandwich-appimage.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 124 ]; then cat /tmp/sandwich-appimage.log; exit 1; fi
+
+      - name: Verify and smoke macOS packages
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          app="$(find target/release/bundle/macos -maxdepth 1 -type d -name '*.app' -print -quit)"
+          archive="$(find target/release/bundle/macos -type f -name '*.app.tar.gz' -print -quit)"
+          test -n "$app" && test -s "$archive" && test -s "$archive.sig"
+          codesign --verify --deep --strict "$app"
+          find "$app/Contents/Resources" -type f -name aria2c -print -quit | grep .
+          find "$app/Contents/Resources" -type f -name sandwich-browser-host -print -quit | grep .
+          executable="$(find "$app/Contents/MacOS" -type f -perm +111 -print -quit)"
+          "$executable" >/tmp/sandwich-macos.log 2>&1 & pid=$!
+          sleep 12
+          if ! kill -0 "$pid" 2>/dev/null; then cat /tmp/sandwich-macos.log; exit 1; fi
+          kill "$pid" && wait "$pid" || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            target/release/bundle/nsis/*-setup.exe
+            target/release/bundle/nsis/*-setup.exe.sig
+            target/release/bundle/msi/*.msi
+            target/release/bundle/msi/*.msi.sig
+            target/release/bundle/deb/*.deb
+            target/release/bundle/appimage/*.AppImage
+            target/release/bundle/appimage/*.AppImage.sig
+            target/release/bundle/dmg/*.dmg
+            target/release/bundle/macos/*.app.tar.gz
+            target/release/bundle/macos/*.app.tar.gz.sig
+          if-no-files-found: error
+          retention-days: 14
+
+  assemble:
+    needs: [preflight, build]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sandwich-release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Author and validate multi-platform updater manifest
+        shell: pwsh
+        run: |
           ./tools/make-latest-json.ps1 `
-            -Version "${{ steps.version.outputs.version }}" `
+            -Version "${{ needs.preflight.outputs.version }}" `
             -Repo "${{ github.repository }}" `
-            -Notes "$notes"
+            -Notes "$(git log -1 --pretty=%s)" `
+            -ArtifactRoot release-assets `
+            -OutputPath release-assets/latest.json
+          $bytes = [System.IO.File]::ReadAllBytes("release-assets/latest.json")
+          if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+            throw "latest.json contains a UTF-8 BOM"
+          }
+          $manifest = Get-Content release-assets/latest.json -Raw | ConvertFrom-Json
+          $expected = @("windows-x86_64", "linux-x86_64", "darwin-aarch64")
+          foreach ($platform in $expected) {
+            $entry = $manifest.platforms.$platform
+            if (-not $entry.url -or -not $entry.signature) { throw "latest.json is incomplete for $platform" }
+          }
 
-      # SIGNING.md commits the project to publishing checksums while installers stay
-      # un-Authenticoded, so a cautious user can verify a download independently.
       - name: Checksums
+        shell: pwsh
         run: |
-          $bundle = "target/release/bundle"
-          Get-ChildItem -ErrorAction SilentlyContinue "$bundle/nsis/*-setup.exe", "$bundle/msi/*.msi" |
-            ForEach-Object { "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Name } |
-            Set-Content -Path "$bundle/SHA256SUMS.txt" -Encoding ascii
-          Get-Content "$bundle/SHA256SUMS.txt"
+          Get-ChildItem release-assets -File |
+            Where-Object Name -NotIn @("latest.json", "SHA256SUMS.txt") |
+            Sort-Object Name |
+            ForEach-Object { "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name.Replace(" ", ".") } |
+            Set-Content release-assets/SHA256SUMS.txt -Encoding ascii
+          Get-Content release-assets/SHA256SUMS.txt
 
-      - name: Publish the release
-        if: github.ref_type == 'tag' && inputs.dry_run != true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $bundle = "target/release/bundle"
-          # latest.json must be attached to EVERY release: installed copies fetch it from
-          # releases/latest/download/, so a release without one stops older installs hearing
-          # about this update and every update after it.
-          $assets = @(
-            "$bundle/nsis/latest.json",
-            "$bundle/SHA256SUMS.txt"
-          ) + (Get-ChildItem -ErrorAction SilentlyContinue `
-                 "$bundle/nsis/*-setup.exe", "$bundle/nsis/*-setup.exe.sig", `
-                 "$bundle/msi/*.msi", "$bundle/msi/*.msi.sig" |
-                 ForEach-Object { $_.FullName })
-          gh release create "${{ steps.version.outputs.tag }}" $assets `
-            --title "Sandwich ${{ steps.version.outputs.version }}" `
-            --generate-notes
-
-      - name: Upload build for inspection
+      - name: Upload release candidate for inspection
         if: inputs.dry_run == true
         uses: actions/upload-artifact@v4
         with:
-          name: sandwich-${{ steps.version.outputs.version }}-dry-run
-          path: |
-            target/release/bundle/nsis/*-setup.exe
-            target/release/bundle/nsis/*.sig
-            target/release/bundle/nsis/latest.json
-            target/release/bundle/msi/*.msi
-            target/release/bundle/SHA256SUMS.txt
+          name: sandwich-${{ needs.preflight.outputs.version }}-release-candidate
+          path: release-assets/*
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish the release
+        if: github.ref_type == 'tag' && inputs.dry_run != true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = @(Get-ChildItem release-assets -File | ForEach-Object FullName)
+          gh release create "${{ needs.preflight.outputs.tag }}" $assets `
+            --title "Sandwich ${{ needs.preflight.outputs.version }}" `
+            --notes "Built together with our GitHub contributors and dedicated to the global open-source community—to everyone seeking code freedom and digital justice." `
+            --generate-notes

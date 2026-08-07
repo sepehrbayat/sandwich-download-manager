@@ -1,58 +1,87 @@
 <#
 .SYNOPSIS
-  Authors the latest.json manifest that installed copies of Sandwich poll for updates.
+  Authors the multi-platform latest.json manifest installed copies poll for updates.
 
 .DESCRIPTION
-  The updater in every installed Sandwich fetches
-    https://github.com/sepehrbayat/sandwich-download-manager/releases/latest/download/latest.json
-  compares the version, verifies the artifact signature against the public key baked into the
-  app, and offers the update. This script builds that manifest from a finished bundle.
+  Reads the updater artifacts produced by signed Tauri builds for Windows x64, Linux x64,
+  and macOS Apple Silicon. Each platform entry embeds the CONTENT of its matching .sig file;
+  a path or URL is not a valid Tauri signature.
 
-  Run AFTER `tauri build` with TAURI_SIGNING_PRIVATE_KEY set, so the .sig exists. The
-  manifest must be uploaded as a release asset named exactly latest.json — and every future
-  release must include one, or older installs will stop hearing about updates.
+  Run after all three CI artifacts have been downloaded into one directory. The manifest must
+  be attached to every GitHub release as latest.json so older installs keep receiving updates.
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File tools/make-latest-json.ps1 -Version 0.5.0
+  pwsh -File tools/make-latest-json.ps1 -Version 0.6.0 -ArtifactRoot release-assets
 #>
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)][string]$Version,
   [string]$Repo = "sepehrbayat/sandwich-download-manager",
-  [string]$Notes = ""
+  [string]$Notes = "",
+  [string]$ArtifactRoot = (Join-Path $PSScriptRoot "..\target\release\bundle"),
+  [string]$OutputPath = ""
 )
 
 $ErrorActionPreference = "Stop"
-$bundle = Join-Path $PSScriptRoot "..\target\release\bundle\nsis"
-$setup = Join-Path $bundle "Sandwich Download Manager_${Version}_x64-setup.exe"
-$sig = "$setup.sig"
+$root = (Resolve-Path -LiteralPath $ArtifactRoot).Path
 
-if (-not (Test-Path $setup)) { throw "installer not found: $setup - build first" }
-if (-not (Test-Path $sig)) { throw "signature not found: $sig - build with TAURI_SIGNING_PRIVATE_KEY set" }
+function OneArtifact([string]$pattern, [string]$label) {
+  $matches = @(Get-ChildItem -LiteralPath $root -Recurse -File | Where-Object { $_.Name -like $pattern })
+  if ($matches.Count -ne 1) {
+    throw "expected exactly one $label matching '$pattern' under $root; found $($matches.Count)"
+  }
+  $matches[0]
+}
 
-# GitHub replaces spaces in asset names with dots; the URL must use the name it will serve.
-$assetName = (Split-Path $setup -Leaf).Replace(" ", ".")
+function PlatformEntry([System.IO.FileInfo]$artifact, [string]$label) {
+  $signaturePath = "$($artifact.FullName).sig"
+  if (-not (Test-Path -LiteralPath $signaturePath -PathType Leaf)) {
+    throw "missing $label updater signature: $signaturePath"
+  }
+  $signature = (Get-Content -LiteralPath $signaturePath -Raw).Trim()
+  if (-not $signature) { throw "$label updater signature is empty: $signaturePath" }
+
+  # GitHub normalizes spaces in uploaded release-asset names to dots.
+  $assetName = $artifact.Name.Replace(" ", ".")
+  [ordered]@{
+    signature = $signature
+    url = "https://github.com/$Repo/releases/download/v$Version/$assetName"
+  }
+}
+
+$windows = OneArtifact "*_${Version}_x64-setup.exe" "Windows NSIS updater"
+$linux = OneArtifact "*_${Version}_amd64.AppImage" "Linux AppImage updater"
+$macos = OneArtifact "*.app.tar.gz" "macOS app updater archive"
 
 $manifest = [ordered]@{
   version = $Version
   notes = $Notes
-  pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+  # Formatting must not inherit the machine's calendar (for example PersianCalendar), or the
+  # manifest can advertise year 1405 while the release was actually built in 2026.
+  pub_date = (Get-Date).ToUniversalTime().ToString(
+    "yyyy-MM-ddTHH:mm:ssZ",
+    [Globalization.CultureInfo]::InvariantCulture
+  )
   platforms = [ordered]@{
-    "windows-x86_64" = [ordered]@{
-      # The signature is the .sig file's CONTENT, not a path or URL.
-      signature = (Get-Content $sig -Raw).Trim()
-      url = "https://github.com/$Repo/releases/download/v$Version/$assetName"
-    }
+    "windows-x86_64" = PlatformEntry $windows "Windows"
+    "linux-x86_64" = PlatformEntry $linux "Linux"
+    "darwin-aarch64" = PlatformEntry $macos "macOS"
   }
 }
 
-$out = Join-Path $bundle "latest.json"
-# Not Set-Content: under Windows PowerShell 5.1 its UTF8 writes a BOM, and serde_json —
-# which every installed copy parses this file with — rejects a manifest that starts with
-# one. That is an updater outage that no local Get-Content check can see, because
-# Get-Content strips the BOM back out on read.
+if (-not $OutputPath) { $OutputPath = Join-Path $root "latest.json" }
+$outputDirectory = Split-Path -Parent $OutputPath
+if ($outputDirectory -and -not (Test-Path -LiteralPath $outputDirectory)) {
+  New-Item -ItemType Directory -Path $outputDirectory | Out-Null
+}
+
+# Windows PowerShell 5.1 writes a UTF-8 BOM via Set-Content. serde_json rejects a manifest
+# beginning with that BOM, so write UTF-8 without one explicitly on every operating system.
 $json = $manifest | ConvertTo-Json -Depth 5
-[System.IO.File]::WriteAllText((Join-Path (Resolve-Path $bundle) "latest.json"), $json, [System.Text.UTF8Encoding]::new($false))
-Write-Host "wrote $out"
-Write-Host "  version : $Version"
-Write-Host "  url     : $($manifest.platforms.'windows-x86_64'.url)"
+[System.IO.File]::WriteAllText($OutputPath, $json, [System.Text.UTF8Encoding]::new($false))
+
+Write-Host "wrote $OutputPath"
+Write-Host "  version          : $Version"
+foreach ($platform in $manifest.platforms.Keys) {
+  Write-Host "  $platform : $($manifest.platforms[$platform].url)"
+}
