@@ -340,7 +340,7 @@ impl Aria2 {
         // killed an otherwise healthy engine just before it became ready. Keep polling with a
         // finite ceiling so slow machines get a working download manager without hiding a
         // genuinely broken sidecar forever.
-        for _ in 0..150 {
+        for _ in 0..40 {
             let exited = {
                 let mut child = engine.child.lock().map_err(|_| {
                     Aria2Error::Spawn("could not inspect the download engine process".into())
@@ -373,11 +373,19 @@ impl Aria2 {
                 };
                 return Err(Aria2Error::Spawn(detail));
             }
-            if engine
-                .call("aria2.getVersion", serde_json::json!([]))
-                .await
-                .is_ok()
-            {
+            // The normal client timeout is intentionally generous for real download RPCs.
+            // Readiness probes are different: one half-open local connection must not consume
+            // that whole timeout and prevent the remaining probes (or startup diagnostics)
+            // from running. Forty bounded probes plus the interval below cap startup at about
+            // twenty-four seconds.
+            if matches!(
+                tokio::time::timeout(
+                    Duration::from_millis(500),
+                    engine.call("aria2.getVersion", serde_json::json!([])),
+                )
+                .await,
+                Ok(Ok(_))
+            ) {
                 return Ok(engine);
             }
             tokio::time::sleep(Duration::from_millis(100)).await;

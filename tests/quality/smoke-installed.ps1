@@ -133,7 +133,7 @@ Start-Process $AppPath -RedirectStandardOutput $appStdout -RedirectStandardError
 # Readiness is the contract, not an arbitrary sleep. A clean Windows machine can hold a newly
 # installed sidecar for several seconds while antivirus inspects it, so allow the app's bounded
 # startup window and stop as soon as both the engine and browser handoff are real.
-$deadline = (Get-Date).AddSeconds(25)
+$deadline = (Get-Date).AddSeconds(35)
 do {
   Start-Sleep -Milliseconds 500
   $engines = @(Get-CimInstance Win32_Process -Filter "Name='aria2c.exe'" | Where-Object { $_.CommandLine -match 'rpc-secret' })
