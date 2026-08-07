@@ -7,7 +7,7 @@ name: Release
 # To publish: bump the version in apps/desktop/tauri.conf.json, apps/desktop/Cargo.toml and
 # extension/manifest.json, merge, then push a matching tag:
 #
-#   git tag v0.4.0 && git push origin v0.4.0
+#   git tag v0.5.0 && git push origin v0.5.0
 #
 # Everything below is a guard against the two ways a release goes quietly wrong: shipping an
 # installer that installed copies will refuse, and shipping one they never hear about.

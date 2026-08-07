@@ -34,7 +34,7 @@ To publish:
 2. Push a matching tag:
 
    ```
-   git tag v0.4.0 && git push origin v0.4.0
+   git tag v0.5.0 && git push origin v0.5.0
    ```
 
 The workflow refuses to go on if the tag disagrees with the version in the config, or if the

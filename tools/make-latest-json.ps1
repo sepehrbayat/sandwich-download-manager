@@ -13,7 +13,7 @@
   release must include one, or older installs will stop hearing about updates.
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File tools/make-latest-json.ps1 -Version 0.3.0
+  powershell -ExecutionPolicy Bypass -File tools/make-latest-json.ps1 -Version 0.5.0
 #>
 [CmdletBinding()]
 param(

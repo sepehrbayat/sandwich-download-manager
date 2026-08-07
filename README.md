@@ -11,7 +11,8 @@ after a trial. Sandwich is the same idea without the licence: segmented download
 resume, and a queue that is actually pleasant to look at — free permanently, source open,
 no subscription and no nag screens.
 
-> **Status: early.** Version 0.4 runs, downloads, keeps to a schedule, updates itself over
+> **Status: early.** Version 0.5 runs, downloads, keeps to a schedule, limits total transfer
+> speed, updates itself over
 > signed artifacts, and has handled multi-gigabyte transfers — but installers are not yet
 > Authenticode-signed and few people have tested it. Expect rough edges.
 
