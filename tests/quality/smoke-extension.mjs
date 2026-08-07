@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -45,6 +45,14 @@ try {
     await onboarding.evaluate(() => chrome.storage.local.get(["consentVersion", "enabled"])),
     { consentVersion: 1, enabled: true }
   );
+  await onboarding.locator("#consent").uncheck();
+  await onboarding.locator("#save").click();
+  assert.deepEqual(
+    await onboarding.evaluate(() => chrome.storage.local.get(["consentVersion", "enabled", "shareCookies"])),
+    { consentVersion: 0, enabled: false, shareCookies: false }
+  );
+  await onboarding.locator("#consent").check();
+  await onboarding.locator("#save").click();
 
   const media = await context.newPage();
   await media.goto(`http://127.0.0.1:${server.address().port}/`);
@@ -69,4 +77,5 @@ try {
 } finally {
   await context?.close();
   server.close();
+  await rm(profile, { recursive: true, force: true });
 }

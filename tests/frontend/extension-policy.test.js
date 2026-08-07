@@ -15,6 +15,8 @@ test("direct media accepts HTTP sources and rejects opaque browser blobs", () =>
 
 test("the store policy blocks YouTube at both page and source boundaries", () => {
   assert.equal(policy.isRestrictedMediaSite("https://music.youtube.com/watch?v=1"), true);
+  assert.equal(policy.isRestrictedMediaSite("https://youtube.com./watch?v=1"), true);
+  assert.equal(policy.isRestrictedMediaSite("https://www.youtube.com./watch?v=1"), true);
   assert.equal(policy.isRestrictedMediaSite("https://notyoutube.com/video"), false);
   assert.equal(policy.directMediaUrl("https://cdn.example/video.mp4", "https://www.youtube.com/watch?v=1"), "");
   assert.equal(policy.directMediaUrl("https://youtu.be/file.mp4", "https://example/page"), "");
@@ -26,6 +28,8 @@ test("Chromium and Firefox packages advertise the same release and permissions",
   assert.equal(chromium.version, firefox.version);
   assert.deepEqual(chromium.permissions, firefox.permissions);
   assert.deepEqual(chromium.host_permissions, firefox.host_permissions);
+  assert.deepEqual(chromium.content_scripts, firefox.content_scripts);
+  assert.deepEqual(chromium.options_ui, firefox.options_ui);
   assert.equal(chromium.background.service_worker, "background.js");
   assert.deepEqual(firefox.background.scripts, ["policy.js", "background.js"]);
 });

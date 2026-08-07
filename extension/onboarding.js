@@ -12,12 +12,13 @@ extensionApi.storage.local.get(["consentVersion", "shareCookies"]).then((values)
   save.disabled = !consent.checked;
 });
 
-consent.addEventListener("change", () => { save.disabled = !consent.checked; });
+consent.addEventListener("change", () => { save.disabled = false; });
 save.addEventListener("click", async () => {
+  const granted = consent.checked;
   await extensionApi.storage.local.set({
-    consentVersion: 1,
-    enabled: true,
-    shareCookies: cookies.checked
+    consentVersion: granted ? 1 : 0,
+    enabled: granted,
+    shareCookies: granted && cookies.checked
   });
-  saved.textContent = "Saved. You can close this tab.";
+  saved.textContent = granted ? "Saved. You can close this tab." : "Integration disabled.";
 });

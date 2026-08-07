@@ -25,6 +25,8 @@ jobs:
       PLAYWRIGHT_BROWSER: chromium
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Install Linux desktop dependencies
         if: runner.os == 'Linux'

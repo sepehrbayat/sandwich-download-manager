@@ -69,11 +69,12 @@ are approved, load it unpacked for development:
 1. Install and run Sandwich.
 2. Chrome or Edge: open `chrome://extensions`, enable **Developer mode**, choose
    **Load unpacked**, and select the `extension` folder. Copy the extension ID it shows.
-   Firefox: first package the extension, then open `about:debugging`, choose
-   **Load Temporary Add-on**, and select `manifest.json` inside the Firefox package.
+   Firefox: first package the extension and extract
+   `dist/sandwich-extension-firefox-0.6.0.zip`; then open `about:debugging`, choose
+   **Load Temporary Add-on**, and select `manifest.json` from the extracted folder.
 3. Register the bridge so the browser is allowed to talk to Sandwich:
 
-   ```
+   ```powershell
    cd extension
    .\register-host.ps1 -ChromeExtensionId <chrome id> -EdgeExtensionId <edge id>
    ```
@@ -93,7 +94,7 @@ packages will appear there only after their native release gates pass.
 
 Requires [Rust](https://rustup.rs) and Node.js.
 
-```
+```bash
 cargo test --workspace
 npx @tauri-apps/cli@2 build --config apps/desktop/tauri.conf.json --config apps/desktop/tauri.<platform>.conf.json --config apps/desktop/tauri.keyless.conf.json
 ```

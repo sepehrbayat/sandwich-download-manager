@@ -73,12 +73,16 @@ fn is_restricted_store_url(value: &str) -> bool {
     let Ok(parsed) = url::Url::parse(value) else {
         return false;
     };
-    let host = parsed.host_str().unwrap_or_default().to_ascii_lowercase();
+    let host = parsed
+        .host_str()
+        .unwrap_or_default()
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
     host == "youtu.be" || host == "youtube.com" || host.ends_with(".youtube.com")
 }
 
 fn safe_header_value(value: &str) -> Option<&str> {
-    (!value.is_empty() && !value.contains(['\r', '\n'])).then_some(value)
+    (!value.is_empty() && !value.contains('\r') && !value.contains('\n')).then_some(value)
 }
 
 fn read_handoff() -> Option<Handoff> {
@@ -201,6 +205,9 @@ mod tests {
     #[test]
     fn store_host_blocks_youtube_without_blocking_similar_names() {
         assert!(is_restricted_store_url("https://www.youtube.com/watch?v=1"));
+        assert!(is_restricted_store_url(
+            "https://www.youtube.com./watch?v=1"
+        ));
         assert!(is_restricted_store_url("https://youtu.be/abc"));
         assert!(!is_restricted_store_url("https://notyoutube.com/file.mp4"));
     }

@@ -189,7 +189,7 @@ const USER_AGENT: &str = "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko) Chr
 /// Where transfers land when no destination is supplied.
 fn default_download_dir() -> PathBuf {
     dirs::download_dir()
-        .filter(|path| path.exists())
+        .filter(|path| path.is_dir())
         .unwrap_or_else(std::env::temp_dir)
 }
 

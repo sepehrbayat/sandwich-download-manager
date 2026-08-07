@@ -8,7 +8,7 @@
   ];
 
   function hostname(value) {
-    try { return new URL(value).hostname.toLowerCase(); } catch { return ""; }
+    try { return new URL(value).hostname.toLowerCase().replace(/\.+$/, ""); } catch { return ""; }
   }
 
   function hostMatches(host, domain) {

@@ -78,8 +78,15 @@ mkdir -p "$firefox_target"
 cp "$firefox_manifest" "$firefox_target/$host_name.json"
 
 echo "registered Firefox native host"
-if [ -n "$chrome_id" ] || [ -n "$edge_id" ]; then
-  echo "registered Chrome/Edge native hosts"
+if [ -n "$chrome_id" ]; then
+  echo "registered Chrome native host"
 else
-  echo "Chrome/Edge registration is staged but disabled until the store assigns an extension ID"
+  echo "Chrome registration is staged but disabled until the store assigns an extension ID"
+fi
+if [ -n "$edge_id" ]; then
+  echo "registered Edge native host"
+elif [ -n "$chrome_id" ]; then
+  echo "Edge registration is using the Chrome/development ID fallback; supply --edge-id before release"
+else
+  echo "Edge registration is staged but disabled until the store assigns an extension ID"
 fi

@@ -106,10 +106,8 @@ foreach ($target in $registryTargets) {
 }
 
 if (-not $ChromeExtensionId) {
-  Write-Warning "No Chrome/Edge extension id was supplied, so those browsers will refuse the host."
-  Write-Warning "Load the extension at chrome://extensions, copy its ID, then re-run:"
-  Write-Warning "  .\register-host.ps1 -ChromeExtensionId <id>"
+  Write-Warning "Chrome is staged but disabled. Supply -ChromeExtensionId with its Chrome store/development ID."
 }
 if (-not $EdgeExtensionId) {
-  Write-Warning "No separate Edge store id was supplied; Edge currently uses the Chrome/development id."
+  Write-Warning "Edge is staged with the Chrome/development ID fallback. Supply -EdgeExtensionId before release."
 }

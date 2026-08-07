@@ -36,6 +36,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # Without the key Tauri cannot produce updater artifacts at all, and a release published
       # without them is worse than no release: every installed copy polls latest.json, and one

@@ -62,18 +62,17 @@ async function cookieHeaderFor(url, allowed) {
 }
 
 async function handOver({ url, filename, referrer }) {
-  if (policy.isRestrictedMediaSite(url) || policy.isRestrictedMediaSite(referrer || "")) {
-    throw new Error("This store build cannot download from YouTube");
-  }
+  const validatedUrl = policy.directMediaUrl(url, referrer || "");
+  if (!validatedUrl) throw new Error("This action requires a permitted HTTP(S) URL");
   const config = await settings();
   if (config.consentVersion < 1) throw new Error("Open Sandwich settings and enable browser integration first");
   const [cookie, agent] = await Promise.all([
-    cookieHeaderFor(url, config.shareCookies),
+    cookieHeaderFor(validatedUrl, config.shareCookies),
     Promise.resolve(navigator.userAgent)
   ]);
 
   const reply = await extensionApi.runtime.sendNativeMessage(HOST, {
-    url,
+    url: validatedUrl,
     filename: filename || undefined,
     referrer: referrer || undefined,
     user_agent: agent,
@@ -120,13 +119,21 @@ extensionApi.downloads.onCreated.addListener(async (item) => {
 // Explicit "download with Sandwich" on any link, which also covers everything the automatic
 // rules deliberately skip.
 extensionApi.runtime.onInstalled.addListener(() => {
-  extensionApi.contextMenus.removeAll().then(() => {
+  const createMenu = () => {
     extensionApi.contextMenus.create({
       id: "sandwich-download",
       title: "Download with Sandwich",
       contexts: ["link", "video", "audio", "image"]
     });
-  });
+  };
+  if (globalThis.browser) {
+    extensionApi.contextMenus.removeAll().then(createMenu);
+  } else {
+    extensionApi.contextMenus.removeAll(() => {
+      void extensionApi.runtime.lastError;
+      createMenu();
+    });
+  }
 });
 
 extensionApi.runtime.onInstalled.addListener(({ reason }) => {
