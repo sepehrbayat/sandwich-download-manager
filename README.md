@@ -25,6 +25,12 @@ no subscription and no nag screens.
 - **Completion that says so** — a toast with *Open* / *Show in folder*, a native Windows
   notification when the window is in the background, and a straight answer if the file has
   since been moved or deleted
+- **Batches** — a game shipped as fifty 2 GB parts goes in as one line. Paste the addresses, or
+  write the range once as `game.part[01-50].rar` and let it stand for all fifty; the zero
+  padding comes from the pattern rather than a separate field. Sandwich shows exactly what will
+  be queued before it queues anything, names which lines it will skip and why, then puts the
+  set in the queue as **one card** you can pause, resume or cancel in a single action. Expand it
+  for the parts, and retry a broken one without touching the other forty-nine
 - **Scheduled downloading** — set the hours transfers may run (`22:00`–`06:00`, weekdays only,
   whatever suits your connection) and how many run at once. Outside the window the queue holds
   itself, says so in the title bar, and starts on its own at the hour you named. A download you
@@ -128,6 +134,13 @@ days and daylight-saving edges are all testable without waiting for 2am. The eng
 scheduled pause and an abandoned one identically, so a sidecar file records which pauses were
 Sandwich's own: reopening the window resumes those and nothing else, and a download the user
 starts by hand is exempt until the window next opens.
+
+Batches follow the same shape, in `apps/desktop/src/batch.rs`. aria2 has no notion of a group,
+so a sidecar records which transfers belong together and the queue collapses them into one
+aggregate row; a retried part keeps its place by swapping its id in the batch rather than
+falling out as a loose card. Both a single download and every member of a batch are queued
+through the same function, so a batch cannot quietly acquire different safety, destination or
+scheduling behaviour from a download added on its own.
 
 Transfers are performed by [aria2](https://aria2.github.io/), which has handled proxies,
 redirects, retries and resume for fifteen years. Sandwich deliberately keeps one thing to

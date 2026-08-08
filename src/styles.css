@@ -382,6 +382,105 @@ input[type="url"]:focus { border-color: var(--crust); outline: none; }
 #destination { display: block; font-size: 12.5px; color: var(--ink-soft); }
 .check-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-weight: 400; }
 
+/* ── Batches ───────────────────────────────────────────────────────────────
+ * One card can stand for fifty transfers, so the paste box, its preview and the expanded
+ * member list all live here. */
+
+.intake-modes { display: flex; gap: 6px; margin-top: 16px; }
+.mode-choice {
+  padding: 5px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.mode-choice.is-selected {
+  background: color-mix(in oklab, var(--crust) 22%, var(--surface));
+  border-color: color-mix(in oklab, var(--crust) 55%, var(--line));
+}
+
+#batch-input {
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
+  resize: vertical;
+}
+#batch-input:focus { border-color: var(--crust); outline: none; }
+
+.batch-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+  border-inline-start: 3px solid var(--line);
+}
+.batch-state[data-tone="ok"] { border-inline-start-color: var(--lettuce); }
+.batch-state[data-tone="warn"] { border-inline-start-color: var(--crust); }
+.batch-state[data-tone="error"] { border-inline-start-color: var(--tomato); }
+.batch-headline { font-weight: 700; font-size: 13px; }
+.batch-detail { font-size: 12.5px; color: var(--ink-soft); }
+
+.batch-rejects { margin-top: 8px; font-size: 12.5px; }
+.batch-rejects summary { cursor: pointer; color: var(--ink-soft); font-weight: 600; }
+.reject-list { margin: 6px 0 0; padding-inline-start: 18px; display: grid; gap: 4px; }
+.reject-list code { font-size: 12px; word-break: break-all; }
+.reject-reason { display: block; color: var(--tomato); }
+
+.batch-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+.batch-name-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 200px; }
+#batch-name {
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+  color: var(--ink);
+  font: inherit;
+}
+#batch-name:focus { border-color: var(--crust); outline: none; }
+
+/* The parts of a batch, inside its expanded card. Rows rather than cards: fifty nested cards
+   is the mess the grouping exists to prevent. */
+.member-list {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+  font-size: 12.5px;
+}
+.member-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-state { flex: none; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.member[data-status="completed"] .member-state { color: var(--lettuce); }
+.member[data-status="failed"] .member-state,
+.member[data-status="cancelled"] .member-state { color: var(--tomato); }
+.member[data-status="active"] .member-state { color: var(--crust-deep); font-weight: 600; }
+.member-retry { flex: none; padding: 2px 8px; font-size: 12px; }
+
 /* ── Settings ──────────────────────────────────────────────────────────── */
 
 .setting-row + .setting-row {

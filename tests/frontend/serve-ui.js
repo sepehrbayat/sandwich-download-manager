@@ -38,6 +38,70 @@ createServer(async (request, response) => {
             return window.__sandwichScheduleStatus;
           }
           if (command === "schedule_status") return window.__sandwichScheduleStatus;
+          // A faithful-enough stand-in for the Rust resolver: expands one [a-b] range, drops
+          // repeats, and refuses anything that is not http(s). The real rules are unit-tested
+          // in Rust; these specs are about what the interface does with the answer.
+          if (command === "preview_batch") {
+            const raw = String(payload.input ?? "").split(/\\s+/).filter(Boolean);
+            const links = [];
+            const rejected = [];
+            for (const line of raw) {
+              const range = /\\[(\\d+)-(\\d+)\\]/.exec(line);
+              if (!range) { links.push(line); continue; }
+              const [from, to] = [Number(range[1]), Number(range[2])];
+              if (from > to) { rejected.push({ link: line, reason: "the range counts backwards - write it as [01-50]" }); continue; }
+              for (let value = from; value <= to; value += 1) {
+                links.push(line.replace(range[0], String(value).padStart(range[1].length, "0")));
+              }
+            }
+            const seen = new Set();
+            const unique = links.filter((link) => !seen.has(link) && seen.add(link));
+            const duplicates = links.length - unique.length;
+            const accepted = [];
+            for (const link of unique) {
+              if (/^https?:\\/\\//i.test(link)) accepted.push(link);
+              else rejected.push({ link, reason: "only HTTP and HTTPS download URLs are supported" });
+            }
+            const names = accepted.map((link) => link.split("/").pop());
+            const shared = names.length > 1
+              ? names[0].slice(0, Math.max(0, [...names[0]].findIndex((c, i) => names.some((n) => n[i] !== c))))
+              : (names[0] ?? "").replace(/\\.[^.]+$/, "");
+            // Mirrors the Rust namer closely enough to be honest: trailing digits and
+            // separators go, then the sequence word, but only if a name is left behind.
+            const base = shared.replace(/[.\\-_\\d]+$/, "");
+            const stripped = base.replace(/[.\\-_ ]*(part|disc|disk|volume|vol|cd)$/i, "");
+            return {
+              links: accepted,
+              rejected,
+              duplicates,
+              truncated: false,
+              suggested_name: (stripped.length >= 2 ? stripped : base) || names[0] || "Batch"
+            };
+          }
+          if (command === "submit_batch") {
+            const preview = await window.__SANDWICH_TEST_BRIDGE__.invoke("preview_batch", { input: payload.input });
+            const name = payload.name || preview.suggested_name;
+            const batchId = "batch-fixture-" + (window.__sandwichBatchSeq = (window.__sandwichBatchSeq ?? 0) + 1);
+            const queued = preview.links.map((link, index) => ({
+              id: batchId + "-" + index, filename: link.split("/").pop(), status: "queued",
+              completed_bytes: 0, total_bytes: 2097152, bytes_per_second: 0, connections: 0,
+              num_pieces: 8, bitfield: "0", source_url: link, directory: "C:\\\\Users\\\\Tester\\\\Downloads",
+              batch_id: batchId, batch_name: name
+            }));
+            window.__sandwichBatches = (window.__sandwichBatches ?? []).concat(queued);
+            return { batch_id: batchId, name, queued, failed: [] };
+          }
+          if (command === "control_batch") {
+            // Mirrors the real shape: only confirmed removals are reported gone, so the UI can
+            // be tested against a cancel that half succeeds.
+            const members = (window.__sandwichBatchMembers ?? []).filter((m) => m.batch_id === payload.batchId);
+            if (payload.action !== "cancel") return { removed: [], updated: [] };
+            const stubborn = new Set(window.__sandwichUncancellable ?? []);
+            return {
+              removed: members.filter((m) => !stubborn.has(m.id)).map((m) => m.id),
+              updated: members.filter((m) => stubborn.has(m.id))
+            };
+          }
           if (command === "list_downloads") return [
             { id: "active-1", filename: "ubuntu-24.04.iso", status: "active", completed_bytes: 5242880, total_bytes: 10485760, bytes_per_second: 1048576, eta_seconds: 5, connections: 8, num_pieces: 40, bitfield: "ffffe000000000000000", source_url: "https://releases.example.com/ubuntu-24.04.iso", directory: "C:\\Users\\Tester\\Downloads" },
             { id: "paused-1", filename: "album.flac", status: "paused", completed_bytes: 1048576, total_bytes: 4194304, bytes_per_second: 0, connections: 0, num_pieces: 16, bitfield: "f000", source_url: "https://music.example.com/album.flac", directory: "C:\\Users\\Tester\\Downloads" },

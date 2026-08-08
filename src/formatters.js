@@ -253,6 +253,104 @@ const ENGINE_EXPLANATIONS = {
   24: ["Sign-in required", "The server wants credentials. Downloading from the browser extension passes your session along."]
 };
 
+/* ── Batches ─────────────────────────────────────────────────────────────── */
+
+/**
+ * The one state a batch is in, worked out from the states of its parts.
+ *
+ * A batch that is still moving reports as downloading even with a failure among its parts: the
+ * transfer genuinely is in progress, and the failures are counted separately so the card can
+ * say "3 failed" without pretending the whole thing has stopped. Only once nothing is running
+ * does a failure become the batch's own state, because then it is the thing needing a decision.
+ */
+export function aggregateStatus(members) {
+  if (!members.length) return "cancelled";
+  const has = (status) => members.some((member) => member.status === status);
+  if (members.every((member) => member.status === "completed")) return "completed";
+  if (has("active")) return "active";
+  if (has("queued")) return "queued";
+  if (has("paused") || has("recoverably_interrupted")) return "paused";
+  if (has("failed")) return "failed";
+  return "cancelled";
+}
+
+/**
+ * Adds a batch's parts up into the numbers one card has to show.
+ *
+ * Speed and connections count only the parts actually running: a batch of fifty where two are
+ * transferring should report those two, not fifty stale readings.
+ */
+export function batchTotals(members) {
+  const totals = {
+    count: members.length,
+    done: 0,
+    failed: 0,
+    scheduled: 0,
+    total_bytes: 0,
+    completed_bytes: 0,
+    bytes_per_second: 0,
+    connections: 0,
+    // False once any part has not reported its size: the total is then a floor, not a figure,
+    // and a card that rounds that to a confident number is lying about how much is left.
+    sizeKnown: true
+  };
+  for (const member of members) {
+    if (member.status === "completed") totals.done += 1;
+    if (member.status === "failed") totals.failed += 1;
+    if (member.scheduled) totals.scheduled += 1;
+    totals.completed_bytes += member.completed_bytes || 0;
+    if (member.total_bytes > 0) totals.total_bytes += member.total_bytes;
+    else totals.sizeKnown = false;
+    if (member.status === "active") {
+      totals.bytes_per_second += member.bytes_per_second || 0;
+      totals.connections += member.connections || 0;
+    }
+  }
+  return totals;
+}
+
+/** What a batch card says where a single download names its size: progress in files. */
+export function batchProgressLabel(totals) {
+  const parts = [`${totals.done} of ${totals.count} files`];
+  if (totals.failed > 0) {
+    parts.push(`${totals.failed} failed`);
+  }
+  return parts.join(" · ");
+}
+
+/**
+ * The one line under the paste box, before anything is queued.
+ *
+ * Says what will happen rather than what was typed. Silently dropping repeats or bad lines is
+ * how someone ends up with 47 of the 50 parts of a game and no idea which three are missing.
+ */
+export function describePreview(preview) {
+  const accepted = preview?.links?.length ?? 0;
+  const rejected = preview?.rejected?.length ?? 0;
+  const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
+
+  if (accepted === 0) {
+    return {
+      tone: "error",
+      headline: rejected > 0 ? "Nothing here can be downloaded" : "No links yet",
+      detail: rejected > 0
+        ? `${plural(rejected, "address")} could not be used.`
+        : "Paste one address per line, or use a range like part[01-50].bin."
+    };
+  }
+
+  const notes = [];
+  if (preview.duplicates > 0) notes.push(`${plural(preview.duplicates, "repeat")} removed`);
+  if (rejected > 0) notes.push(`${plural(rejected, "line")} skipped`);
+  if (preview.truncated) notes.push(`only the first ${accepted} will be added`);
+
+  return {
+    tone: rejected > 0 || preview.truncated ? "warn" : "ok",
+    headline: `${plural(accepted, "file")} ready`,
+    detail: notes.join(" · ")
+  };
+}
+
 /**
  * Turns an engine failure into words a person can act on.
  *

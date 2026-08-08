@@ -16,6 +16,52 @@ test("capture queue in each theme", async ({ page }) => {
   await page.evaluate(() => localStorage.removeItem("sandwich-theme"));
 });
 
+test("capture a batch: the paste box and the card it becomes", async ({ page }) => {
+  await page.goto("/index.html?fixture");
+  await page.waitForSelector(".download-card");
+
+  await page.locator("#open-add").click();
+  await page.locator("#mode-many").click();
+  await page.locator("#batch-input").fill(
+    "https://cdn.example.com/Cyberpunk.part[01-50].rar\nftp://cdn.example.com/readme.txt"
+  );
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: "test-results/capture-batch-paste.png", fullPage: true });
+
+  // The card fifty transfers collapse into, half finished with a couple of failures.
+  await page.locator("#close-add").click();
+  await page.locator("#dismiss-offer").click();
+  await page.evaluate(() => {
+    const members = Array.from({ length: 50 }, (_, index) => {
+      let status = "queued";
+      if (index < 22) status = "completed";
+      else if (index < 24) status = "failed";
+      else if (index < 27) status = "active";
+      return {
+        id: `cp-${index}`,
+        filename: `Cyberpunk.part${String(index + 1).padStart(2, "0")}.rar`,
+        status,
+        completed_bytes: status === "completed" ? 2_147_483_648 : status === "active" ? 900_000_000 : 0,
+        total_bytes: 2_147_483_648,
+        bytes_per_second: status === "active" ? 4_200_000 : 0,
+        connections: status === "active" ? 8 : 0,
+        num_pieces: 40, bitfield: "0",
+        source_url: `https://cdn.example.com/Cyberpunk.part${index + 1}.rar`,
+        directory: "C:\\Users\\Tester\\Downloads",
+        batch_id: "cp", batch_name: "Cyberpunk"
+      };
+    });
+    const original = window.__SANDWICH_TEST_BRIDGE__.invoke;
+    window.__SANDWICH_TEST_BRIDGE__.invoke = async (command, payload) =>
+      command === "list_downloads" ? members : original(command, payload);
+    return window.__sandwichRefresh();
+  });
+  await page.waitForSelector(".download-card");
+  await page.locator(".download-card .disclosure").first().click();
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: "test-results/capture-batch-card.png", fullPage: true });
+});
+
 test("capture the schedule panel, open and closed window", async ({ page }) => {
   await page.goto("/index.html?fixture");
   await page.waitForSelector(".download-card");

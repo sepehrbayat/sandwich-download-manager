@@ -1,10 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod batch;
 mod history;
 mod schedule;
 mod settings;
 
 use aria2_client::{Aria2, Aria2Status};
+use batch::BatchStore;
 use chrono::Local;
 use download_policy::DownloadStatus;
 use history::HistoryStore;
@@ -55,6 +57,13 @@ struct Snapshot {
     /// "paused"; only Sandwich knows the difference, and the card has to say which it is or a
     /// scheduled queue looks like one somebody stopped and forgot about.
     scheduled: bool,
+    /// The batch this transfer belongs to, when it is one part of a set. aria2 has no notion of
+    /// a group, so this is the only thing that keeps fifty parts of a game from arriving in the
+    /// queue as fifty unrelated cards.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    batch_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    batch_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<DownloadError>,
 }
@@ -79,6 +88,7 @@ struct AppState {
     config_dir: PathBuf,
     history: Arc<Mutex<HistoryStore>>,
     held: Arc<Mutex<HeldStore>>,
+    batches: Arc<Mutex<BatchStore>>,
     /// The live copy of the download window. Kept in memory as well as on disk so the ticker
     /// and the poller do not read the settings file several times a second.
     schedule: Arc<Mutex<Schedule>>,
@@ -131,6 +141,8 @@ fn to_snapshot(status: &Aria2Status) -> Snapshot {
         added_at: None,
         completed_at: None,
         scheduled: false,
+        batch_id: None,
+        batch_name: None,
         error: status
             .error_message
             .as_ref()
@@ -153,6 +165,7 @@ fn stamped(
     mut snapshot: Snapshot,
     history: &Mutex<HistoryStore>,
     held: &Mutex<HeldStore>,
+    batches: &Mutex<BatchStore>,
 ) -> Snapshot {
     if let Ok(store) = history.lock() {
         let times = store.get(&snapshot.id);
@@ -161,6 +174,12 @@ fn stamped(
     }
     if let Ok(store) = held.lock() {
         snapshot.scheduled = store.holds(&snapshot.id);
+    }
+    if let Ok(store) = batches.lock() {
+        if let Some(batch) = store.batch_of(&snapshot.id) {
+            snapshot.batch_id = Some(batch.id.clone());
+            snapshot.batch_name = Some(batch.name.clone());
+        }
     }
     snapshot
 }
@@ -212,19 +231,24 @@ async fn hold_if_closed(
     true
 }
 
-/// Shared by manual submission and clipboard confirmation so both follow one code path.
-async fn queue_download(
+/// Queues exactly one address and returns the engine's id for it, with the filename it landed
+/// under.
+///
+/// The single-download commands and the batch submission both go through here, so a batch can
+/// never acquire different safety, destination or scheduling behaviour from a download added on
+/// its own — which is the way this kind of feature usually grows a hole.
+async fn queue_link(
     engine: &Aria2,
     history: &Mutex<HistoryStore>,
     held: &Mutex<HeldStore>,
     schedule: &Mutex<Schedule>,
-    url: String,
-    destination: String,
+    url: &str,
+    destination: &str,
     organize_by_type: bool,
-) -> Result<Snapshot, String> {
+) -> Result<(String, String), String> {
     // Sandwich keeps ownership of safety policy even though aria2 performs the transfer.
-    download_policy::validate_url(&url).map_err(|error| error.to_string())?;
-    let filename = download_policy::sanitize_filename(&derived_filename(&url))
+    download_policy::validate_url(url).map_err(|error| error.to_string())?;
+    let filename = download_policy::sanitize_filename(&derived_filename(url))
         .map_err(|error| error.to_string())?;
     let mut folder = PathBuf::from(destination);
     if organize_by_type {
@@ -236,18 +260,289 @@ async fn queue_download(
         folder.push(category.to_ascii_lowercase());
     }
     let gid = engine
-        .add_uri(&url, &folder, &filename)
+        .add_uri(url, &folder, &filename)
         .await
         .map_err(|error| error.to_string())?;
     if let Ok(mut store) = history.lock() {
         store.record_added(&gid);
     }
     hold_if_closed(engine, held, schedule, &gid).await;
+    Ok((gid, filename))
+}
+
+/// Shared by manual submission and clipboard confirmation so both follow one code path.
+#[allow(clippy::too_many_arguments)]
+async fn queue_download(
+    engine: &Aria2,
+    history: &Mutex<HistoryStore>,
+    held: &Mutex<HeldStore>,
+    batches: &Mutex<BatchStore>,
+    schedule: &Mutex<Schedule>,
+    url: String,
+    destination: String,
+    organize_by_type: bool,
+) -> Result<Snapshot, String> {
+    let (gid, _) = queue_link(
+        engine,
+        history,
+        held,
+        schedule,
+        &url,
+        &destination,
+        organize_by_type,
+    )
+    .await?;
     let status = engine
         .status(&gid)
         .await
         .map_err(|error| error.to_string())?;
-    Ok(stamped(to_snapshot(&status), history, held))
+    Ok(stamped(to_snapshot(&status), history, held, batches))
+}
+
+/// One address that will not be queued, and why — kept beside the accepted ones rather than
+/// aborting the whole paste. Fifty links with one typo among them should queue forty-nine.
+#[derive(Clone, Serialize)]
+struct RejectedLink {
+    link: String,
+    reason: String,
+}
+
+/// What a paste would actually do, worked out before anything is queued.
+#[derive(Clone, Serialize)]
+struct BatchPreview {
+    links: Vec<String>,
+    rejected: Vec<RejectedLink>,
+    /// Repeats dropped. Pasting a list twice is common enough to report rather than silently fix.
+    duplicates: usize,
+    suggested_name: String,
+    /// True when the list was cut at `MAX_BATCH_LINKS`. Never truncate quietly: a silently
+    /// shortened batch looks complete and is not.
+    truncated: bool,
+}
+
+/// Turns pasted text into the exact set of addresses that would be queued.
+///
+/// The preview and the submission run this same function, so what the user is shown cannot
+/// disagree with what they get.
+fn resolve_batch(input: &str) -> BatchPreview {
+    let mut links = Vec::new();
+    let mut rejected = Vec::new();
+
+    for raw in batch::split_links(input) {
+        match batch::expand_pattern(&raw) {
+            Ok(expanded) => links.extend(expanded),
+            Err(error) => rejected.push(RejectedLink {
+                link: raw,
+                reason: error.to_string(),
+            }),
+        }
+    }
+
+    let (links, duplicates) = batch::dedupe(links);
+
+    // Policy is applied per address, exactly as it is for a single download: the batch route
+    // must not become a way to queue something the normal route would refuse.
+    let mut accepted = Vec::new();
+    for link in links {
+        match download_policy::validate_url(&link) {
+            Ok(_) => accepted.push(link),
+            Err(error) => rejected.push(RejectedLink {
+                link,
+                reason: error.to_string(),
+            }),
+        }
+    }
+
+    let truncated = accepted.len() > batch::MAX_BATCH_LINKS;
+    accepted.truncate(batch::MAX_BATCH_LINKS);
+
+    let filenames: Vec<String> = accepted.iter().map(|link| derived_filename(link)).collect();
+    BatchPreview {
+        suggested_name: batch::derive_name(&filenames),
+        links: accepted,
+        rejected,
+        duplicates,
+        truncated,
+    }
+}
+
+#[tauri::command]
+fn preview_batch(input: String) -> BatchPreview {
+    resolve_batch(&input)
+}
+
+/// What a submitted batch became.
+#[derive(Clone, Serialize)]
+struct BatchResult {
+    batch_id: String,
+    name: String,
+    queued: Vec<Snapshot>,
+    /// Addresses the engine itself refused, after policy had already passed them.
+    failed: Vec<RejectedLink>,
+}
+
+#[tauri::command]
+async fn submit_batch(
+    state: State<'_, AppState>,
+    input: String,
+    destination: String,
+    organize_by_type: bool,
+    name: Option<String>,
+) -> Result<BatchResult, String> {
+    let engine = state.engine()?;
+    let preview = resolve_batch(&input);
+    if preview.links.is_empty() {
+        return Err("none of those addresses can be downloaded".into());
+    }
+
+    let mut gids = Vec::new();
+    let mut filenames = Vec::new();
+    let mut failed = Vec::new();
+    for link in &preview.links {
+        match queue_link(
+            engine,
+            &state.history,
+            &state.held,
+            &state.schedule,
+            link,
+            &destination,
+            organize_by_type,
+        )
+        .await
+        {
+            Ok((gid, filename)) => {
+                gids.push(gid);
+                filenames.push(filename);
+            }
+            // One address the engine will not take must not cost the other forty-nine.
+            Err(reason) => failed.push(RejectedLink {
+                link: link.clone(),
+                reason,
+            }),
+        }
+    }
+    if gids.is_empty() {
+        return Err("the engine refused every address in that batch".into());
+    }
+
+    let chosen = name
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| batch::derive_name(&filenames));
+    let created = match state.batches.lock() {
+        Ok(mut store) => store.create(&chosen, gids.clone()),
+        Err(_) => return Err("could not record the batch".into()),
+    };
+
+    let mut queued = Vec::new();
+    for gid in &gids {
+        if let Ok(status) = engine.status(gid).await {
+            queued.push(stamped(
+                to_snapshot(&status),
+                &state.history,
+                &state.held,
+                &state.batches,
+            ));
+        }
+    }
+
+    Ok(BatchResult {
+        batch_id: created.id,
+        name: created.name,
+        queued,
+        failed,
+    })
+}
+
+/// Pause, resume or cancel every member of a batch.
+///
+/// The whole reason a batch exists: stopping a fifty-part download should be one action, not
+/// fifty. Resuming marks each member as a deliberate start so the download window does not undo
+/// it on the next tick, matching what a single resume does.
+/// What a batch action changed: which members are gone, and the state of those that remain.
+///
+/// Both halves are needed because a cancel can half-succeed. Reporting only "the batch is gone"
+/// would leave the interface hiding a transfer that is still running.
+#[derive(Clone, Serialize)]
+struct BatchControlResult {
+    removed: Vec<String>,
+    updated: Vec<Snapshot>,
+}
+
+#[tauri::command]
+async fn control_batch(
+    state: State<'_, AppState>,
+    batch_id: String,
+    action: String,
+) -> Result<BatchControlResult, String> {
+    if !matches!(action.as_str(), "pause" | "resume" | "cancel") {
+        return Err("unsupported batch action".into());
+    }
+    let engine = state.engine()?;
+    let members: Vec<String> = state
+        .batches
+        .lock()
+        .ok()
+        .and_then(|store| store.get(&batch_id).map(|batch| batch.gids.clone()))
+        .ok_or_else(|| "that batch is no longer in the queue".to_owned())?;
+
+    let mut removed = HashSet::new();
+    for gid in &members {
+        let Ok(status) = engine.status(gid).await else {
+            continue;
+        };
+        match action.as_str() {
+            "pause" if matches!(status.status.as_str(), "active" | "waiting") => {
+                let _ = engine.pause(gid).await;
+                if let Ok(mut store) = state.held.lock() {
+                    store.forget(gid);
+                }
+            }
+            "resume" if status.status == "paused" => {
+                let _ = engine.resume(gid).await;
+                if let Ok(mut store) = state.held.lock() {
+                    store.allow(gid);
+                }
+            }
+            // Only a cancel the engine actually accepted counts. One that failed leaves a
+            // transfer running, and dropping it from the batch anyway would strand it: still
+            // downloading, no longer part of anything the user can stop in one action.
+            "cancel" => {
+                if engine.cancel(gid).await.is_ok() {
+                    removed.insert(gid.clone());
+                    if let Ok(mut store) = state.held.lock() {
+                        store.forget(gid);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if !removed.is_empty() {
+        if let Ok(mut store) = state.batches.lock() {
+            store.remove_members(&batch_id, &removed);
+        }
+    }
+
+    let mut updated = Vec::new();
+    for gid in &members {
+        if removed.contains(gid) {
+            continue;
+        }
+        if let Ok(status) = engine.status(gid).await {
+            updated.push(stamped(
+                to_snapshot(&status),
+                &state.history,
+                &state.held,
+                &state.batches,
+            ));
+        }
+    }
+    Ok(BatchControlResult {
+        removed: removed.into_iter().collect(),
+        updated,
+    })
 }
 
 #[tauri::command]
@@ -259,7 +554,14 @@ async fn list_downloads(state: State<'_, AppState>) -> Result<Vec<Snapshot>, Str
         .map_err(|error| error.to_string())?;
     Ok(all
         .iter()
-        .map(|status| stamped(to_snapshot(status), &state.history, &state.held))
+        .map(|status| {
+            stamped(
+                to_snapshot(status),
+                &state.history,
+                &state.held,
+                &state.batches,
+            )
+        })
         .collect())
 }
 
@@ -347,6 +649,7 @@ async fn submit_url(
         state.engine()?,
         &state.history,
         &state.held,
+        &state.batches,
         &state.schedule,
         url,
         destination,
@@ -366,6 +669,7 @@ async fn confirm_clipboard_offer(
         state.engine()?,
         &state.history,
         &state.held,
+        &state.batches,
         &state.schedule,
         offer.url,
         destination,
@@ -428,6 +732,12 @@ async fn control_download(
         if let Ok(mut store) = state.history.lock() {
             store.record_added(&gid);
         }
+        // A retried part keeps its place in the batch. Without the swap it would fall out of
+        // the group and reappear as a loose card beside it — one failed part in fifty being
+        // exactly when the grouping matters most.
+        if let Ok(mut store) = state.batches.lock() {
+            store.replace_gid(&download_id, &gid);
+        }
         // A retry outside the window joins the queue for the next one, exactly like a newly
         // added download. Letting it run because it happens to be a second attempt would be a
         // hole straight through the schedule.
@@ -436,7 +746,12 @@ async fn control_download(
             .status(&gid)
             .await
             .map_err(|error| error.to_string())?;
-        return Ok(stamped(to_snapshot(&status), &state.history, &state.held));
+        return Ok(stamped(
+            to_snapshot(&status),
+            &state.history,
+            &state.held,
+            &state.batches,
+        ));
     }
 
     match action.as_str() {
@@ -475,18 +790,30 @@ async fn control_download(
             added_at: None,
             completed_at: None,
             scheduled: false,
+            batch_id: None,
+            batch_name: None,
             error: None,
         });
         snapshot.status = DownloadStatus::Cancelled;
         snapshot.bytes_per_second = 0;
         snapshot.eta_seconds = None;
-        return Ok(stamped(snapshot, &state.history, &state.held));
+        return Ok(stamped(
+            snapshot,
+            &state.history,
+            &state.held,
+            &state.batches,
+        ));
     }
     let status = engine
         .status(&download_id)
         .await
         .map_err(|error| error.to_string())?;
-    Ok(stamped(to_snapshot(&status), &state.history, &state.held))
+    Ok(stamped(
+        to_snapshot(&status),
+        &state.history,
+        &state.held,
+        &state.batches,
+    ))
 }
 
 async fn completed_path(engine: &Aria2, id: &str) -> Result<PathBuf, String> {
@@ -739,6 +1066,7 @@ fn spawn_progress_poller(
     engine: Arc<Aria2>,
     history: Arc<Mutex<HistoryStore>>,
     held: Arc<Mutex<HeldStore>>,
+    batches: Arc<Mutex<BatchStore>>,
     schedule: Arc<Mutex<Schedule>>,
 ) {
     tauri::async_runtime::spawn(async move {
@@ -767,7 +1095,7 @@ fn spawn_progress_poller(
                         );
                         continue;
                     }
-                    let snapshot = stamped(to_snapshot(status), &history, &held);
+                    let snapshot = stamped(to_snapshot(status), &history, &held, &batches);
                     let finished = is_new_completion(
                         previous.get(&snapshot.id).map(|(_, status, _)| status),
                         &snapshot.status,
@@ -907,6 +1235,7 @@ fn main() {
             };
             let history = Arc::new(Mutex::new(HistoryStore::load(&data_dir)));
             let held = Arc::new(Mutex::new(HeldStore::load(&data_dir)));
+            let batches = Arc::new(Mutex::new(BatchStore::load(&data_dir)));
             let stored_settings = settings::load(&data_dir);
             // The window is read once here and kept in memory; the settings file stays the
             // durable copy, but the ticker and the poller must not go to disk to consult it.
@@ -935,6 +1264,11 @@ fn main() {
                     if let Ok(mut store) = held.lock() {
                         store.retain_live(&live);
                     }
+                    // A batch whose every member the engine has forgotten is not a batch any
+                    // more; leaving it would put an empty card in the queue for ever.
+                    if let Ok(mut store) = batches.lock() {
+                        store.retain_live(&live);
+                    }
                 }
                 // Judge the window before the first frame, and apply the concurrency cap with
                 // it. A launch at three in the afternoon with an overnight schedule must not
@@ -946,6 +1280,7 @@ fn main() {
                     engine.clone(),
                     history.clone(),
                     held.clone(),
+                    batches.clone(),
                     schedule.clone(),
                 );
                 // Publish how to reach the engine so the browser native host can hand
@@ -964,6 +1299,7 @@ fn main() {
                 config_dir: data_dir,
                 history,
                 held,
+                batches,
                 schedule,
             });
             spawn_clipboard_watcher(handle);
@@ -977,6 +1313,9 @@ fn main() {
             load_settings,
             save_settings,
             schedule_status,
+            preview_batch,
+            submit_batch,
+            control_batch,
             control_download,
             open_completed_file,
             reveal_completed_file,

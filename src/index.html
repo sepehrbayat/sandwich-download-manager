@@ -159,13 +159,54 @@
               Organize completed files by type
             </label>
 
-            <label for="url">Download URL</label>
-            <div class="url-row">
-              <input id="url" name="url" type="url" inputmode="url" autocomplete="url" required
-                placeholder="https://example.com/file.zip" aria-describedby="url-help form-error" />
-              <button class="primary" type="submit">Add download</button>
+            <!-- One or many is a property of the paste, not a different feature, so it is a
+                 mode of this form rather than a panel of its own. -->
+            <div class="intake-modes" role="group" aria-label="How many files">
+              <button type="button" class="mode-choice is-selected" id="mode-single" aria-pressed="true">One link</button>
+              <button type="button" class="mode-choice" id="mode-many" aria-pressed="false">Several links</button>
             </div>
-            <p class="help" id="url-help">Files save to the folder above. HTTP and HTTPS links are checked before the transfer starts.</p>
+
+            <div id="single-mode">
+              <label for="url">Download URL</label>
+              <div class="url-row">
+                <input id="url" name="url" type="url" inputmode="url" autocomplete="url"
+                  placeholder="https://example.com/file.zip" aria-describedby="url-help form-error" />
+                <button class="primary" id="submit-single" type="submit">Add download</button>
+              </div>
+              <p class="help" id="url-help">Files save to the folder above. HTTP and HTTPS links are checked before the transfer starts.</p>
+            </div>
+
+            <div id="many-mode" hidden>
+              <label for="batch-input">Download URLs</label>
+              <textarea id="batch-input" rows="6" spellcheck="false" autocomplete="off"
+                placeholder="https://example.com/game.part[01-50].rar&#10;&#10;…or paste one address per line"
+                aria-describedby="batch-help batch-state"></textarea>
+              <p class="help" id="batch-help">
+                One address per line. A range like <code>part[01-50].rar</code> stands for all
+                fifty — the zero padding is taken from the pattern itself.
+              </p>
+
+              <p class="batch-state" id="batch-state" role="status" aria-live="polite">
+                <span class="batch-headline" id="batch-headline"></span>
+                <span class="batch-detail" id="batch-detail"></span>
+              </p>
+
+              <!-- Skipped lines are listed, never merely counted: knowing three of fifty parts
+                   were dropped is useless without knowing which three. -->
+              <details class="batch-rejects" id="batch-rejects" hidden>
+                <summary id="batch-rejects-summary"></summary>
+                <ul class="reject-list" id="batch-reject-list"></ul>
+              </details>
+
+              <div class="batch-row">
+                <span class="batch-name-field">
+                  <label for="batch-name">Name this batch</label>
+                  <input id="batch-name" type="text" autocomplete="off" placeholder="taken from the filenames" />
+                </span>
+                <button class="primary" id="submit-batch" type="submit">Add batch</button>
+              </div>
+            </div>
+
             <p class="error" id="form-error" role="alert" hidden></p>
           </form>
         </section>
@@ -366,6 +407,9 @@
             <!-- The engine's own words, for diagnosing; the card explains in ours. -->
             <div class="detail-raw-row" hidden><dt>Engine report</dt><dd class="detail-raw"></dd></div>
           </dl>
+          <!-- A batch expands to its parts here. Compact rows rather than nested cards: fifty
+               full cards inside one card is the mess the grouping exists to prevent. -->
+          <ol class="member-list" hidden></ol>
         </div>
 
         <div class="download-actions"></div>
