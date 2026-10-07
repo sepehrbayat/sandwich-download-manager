@@ -1,3 +1,35 @@
+<!-- visual-showroom:start -->
+<p align="center">
+  <img src="docs/showroom/readme-banner.svg" alt="Sandwich Download Manager — repository cover" width="100%">
+</p>
+
+<p align="center">
+  <strong>Sandwich Download Manager</strong><br>
+  TOOLS &amp; INTERFACES
+</p>
+
+<p align="center">
+  <a href="https://sajjad-dehghan-personal-site.prisoner-sedwna.workers.dev/projects/sandwich-download-manager"><strong>Explore the showroom ↗</strong></a> ·
+  <a href="#implementation--original-documentation">Setup &amp; implementation ↓</a>
+</p>
+
+A free, open-source download manager built with Tauri, with segmented downloads, crash-safe resume and browser extensions. I added scheduled downloads and the signed-release pipeline in GitHub Actions.
+
+## Visual tour
+
+[![Actual desktop application · screenshot supplied by the project owner](docs/showroom/readme-view-1.png)](https://sajjad-dehghan-personal-site.prisoner-sedwna.workers.dev/projects/sandwich-download-manager)
+
+1. Actual desktop application · screenshot supplied by the project owner
+
+Real captures or owner-supplied images, not generated product mockups. Demo/local data and edition boundaries are documented below.
+
+## Implementation & original documentation
+
+The existing run instructions, architecture, limitations and credits are preserved below.
+
+---
+<!-- visual-showroom:end -->
+
 <p align="center">
   <img src="assets/logo.png" alt="Sandwich Download Manager" width="390">
 </p>
